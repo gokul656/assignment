@@ -1,0 +1,401 @@
+openapi: 3.0.3
+info:
+  title: Rogers Account Management API
+  description: >
+    CRUD API for managing customer accounts keyed by email (one account per email). On
+    create/update, country + postal code are enriched via https://api.zippopotam.us to resolve
+    Place, State, Longitude and Latitude, which are persisted alongside the account.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: accounts
+paths:
+  /api/accounts:
+    post:
+      tags: [accounts]
+      summary: Create an account
+      operationId: createAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAccountRequest'
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAccountResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Email already in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Postal code lookup failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags: [accounts]
+      summary: Retrieve one account by accountId or email
+      operationId: getAccount
+      parameters:
+        - name: accountId
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 6
+            maxLength: 6
+        - name: email
+          in: query
+          required: false
+          schema:
+            type: string
+            format: email
+      responses:
+        '200':
+          description: Account found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+        '400':
+          description: Neither accountId nor email provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/accounts/{accountId}:
+    put:
+      tags: [accounts]
+      summary: Update an Active account
+      operationId: updateAccount
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAccountRequest'
+      responses:
+        '200':
+          description: Account updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Account is not Active, or email already in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [accounts]
+      summary: Delete an Inactive account
+      operationId: deleteAccount
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: securityPin
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{4}$'
+      responses:
+        '204':
+          description: Account deleted
+        '403':
+          description: Invalid security PIN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Account is not Inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/accounts/{accountId}/status:
+    patch:
+      tags: [accounts]
+      summary: Change an account's status (bonus endpoint)
+      operationId: changeStatus
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeStatusRequest'
+      responses:
+        '200':
+          description: Status changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAccountResponse'
+        '400':
+          description: Invalid status value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/accounts/counts:
+    get:
+      tags: [accounts]
+      summary: Retrieve account counts for a country, grouped hierarchically by State then Place
+      operationId: getCounts
+      parameters:
+        - name: country
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/CountryCode'
+      responses:
+        '200':
+          description: Counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CountryCountResponse'
+        '400':
+          description: Invalid country
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    CountryCode:
+      type: string
+      description: ISO country code. Only these four are supported by this service.
+      enum: [US, DE, ES, FR]
+    AccountStatusValue:
+      type: string
+      enum: [REQUESTED, ACTIVE, INACTIVE]
+    CreateStatusValue:
+      type: string
+      description: Only "Requested" is accepted on account creation.
+      enum: [Requested]
+    CreateAccountRequest:
+      type: object
+      required: [name, email, country, postalCode]
+      properties:
+        name:
+          type: string
+          description: Alphanumeric only, mandatory.
+          pattern: '^[A-Za-z0-9]{1,20}$'
+          minLength: 1
+          maxLength: 20
+          example: Alice
+        email:
+          type: string
+          description: Must be a valid, unique email address.
+          format: email
+          example: alice@example.com
+        country:
+          $ref: '#/components/schemas/CountryCode'
+        postalCode:
+          type: string
+          description: Exactly 5 digits.
+          pattern: '^\d{5}$'
+          example: "35203"
+        age:
+          type: integer
+          description: Optional.
+          minimum: 0
+          maximum: 150
+          example: 30
+        status:
+          allOf:
+            - $ref: '#/components/schemas/CreateStatusValue'
+          description: Optional; if present, must be "Requested". The persisted account is always created as ACTIVE regardless.
+    CreateAccountResponse:
+      type: object
+      properties:
+        accountId:
+          type: string
+          description: 6-character alphanumeric unique id.
+          example: Y547PL
+        status:
+          $ref: '#/components/schemas/AccountStatusValue'
+        securityPin:
+          type: string
+          description: 4-digit PIN required to authorize DELETE. Only ever returned here (and on status change).
+          example: "9348"
+    UpdateAccountRequest:
+      type: object
+      description: All fields optional; only non-null fields are applied. Only allowed while the account is Active.
+      properties:
+        name:
+          type: string
+          pattern: '^[A-Za-z0-9]{1,20}$'
+          minLength: 1
+          maxLength: 20
+        email:
+          type: string
+          format: email
+        country:
+          allOf:
+            - $ref: '#/components/schemas/CountryCode'
+        postalCode:
+          type: string
+          pattern: '^\d{5}$'
+        age:
+          type: integer
+          minimum: 0
+          maximum: 150
+        status:
+          allOf:
+            - $ref: '#/components/schemas/AccountStatusValue'
+    ChangeStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/AccountStatusValue'
+    LocationResponse:
+      type: object
+      properties:
+        place:
+          type: string
+          example: Birmingham
+        state:
+          type: string
+          description: State/region abbreviation as returned by zippopotam.us.
+          example: AL
+        country:
+          $ref: '#/components/schemas/CountryCode'
+        postalCode:
+          type: string
+          example: "35203"
+        longitude:
+          type: number
+          format: double
+          example: -86.8066
+        latitude:
+          type: number
+          format: double
+          example: 33.521
+    AccountResponse:
+      type: object
+      properties:
+        accountId:
+          type: string
+          example: Y547PL
+        email:
+          type: string
+          format: email
+        status:
+          $ref: '#/components/schemas/AccountStatusValue'
+        age:
+          type: integer
+        location:
+          $ref: '#/components/schemas/LocationResponse'
+    PlaceCountResponse:
+      type: object
+      properties:
+        place:
+          type: string
+        count:
+          type: integer
+          format: int64
+    StateCountResponse:
+      type: object
+      properties:
+        state:
+          type: string
+        count:
+          type: integer
+          format: int64
+        places:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlaceCountResponse'
+    CountryCountResponse:
+      type: object
+      properties:
+        country:
+          $ref: '#/components/schemas/CountryCode'
+        count:
+          type: integer
+          format: int64
+        states:
+          type: array
+          items:
+            $ref: '#/components/schemas/StateCountResponse'
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
