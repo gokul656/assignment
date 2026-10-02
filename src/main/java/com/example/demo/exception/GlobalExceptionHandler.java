@@ -1,5 +1,6 @@
 package com.example.demo.exception;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -17,6 +18,7 @@ import java.util.Map;
 
 import static com.example.demo.exception.Constants.*;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -45,7 +47,7 @@ public class GlobalExceptionHandler {
             var lastRef = je.getPath().get(je.getPath().size() - 1);
             String field = lastRef.getPropertyName();
             if (field != null) {
-                fieldErrors.put(field, String.format(INVALID_FIELD_VALUE, field, je.getMessage()));
+                fieldErrors.put(field, String.format(INVALID_FIELD_VALUE, field, rootCauseMessage(je)));
             }
         }
         String message = fieldErrors.isEmpty() ? ex.getMessage() : VALIDATION_FAILED;
@@ -61,7 +63,23 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex) {
+        log.error("Unhandled exception while processing request", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new ErrorResponse(Instant.now(), HttpStatus.INTERNAL_SERVER_ERROR.value(), HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(), ex.getMessage(), Collections.emptyMap()));
+                .body(new ErrorResponse(Instant.now(), HttpStatus.INTERNAL_SERVER_ERROR.value(), HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(),
+                        UNEXPECTED_ERROR, Collections.emptyMap()));
+    }
+
+    /**
+     * Jackson's own exception message is a multi-line diagnostic dump (type name, byte offset,
+     * reference chain) meant for logs, not API consumers. The actual human-readable cause
+     * (e.g. "Unexpected value 'CA'") is the innermost cause's message.
+     */
+    private String rootCauseMessage(Throwable t) {
+        Throwable cause = t;
+        while (cause.getCause() != null && cause.getCause() != cause) {
+            cause = cause.getCause();
+        }
+        return cause.getMessage();
     }
 }
+

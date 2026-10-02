@@ -16,11 +16,11 @@ import com.example.demo.dto.StateCountResponse;
 import com.example.demo.dto.UpdateAccountRequest;
 import com.example.demo.exception.AccountNotFoundException;
 import com.example.demo.exception.ConflictException;
-import com.example.demo.exception.InvalidSecurityPinException;
 import com.example.demo.exception.ValidationException;
 import com.example.demo.repository.AccountRepository;
 import com.example.demo.util.IdGenerator;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -36,6 +36,7 @@ public class AccountService {
 
     private final AccountRepository repository;
     private final ZippopotamClient zippopotamClient;
+    private final PasswordEncoder passwordEncoder;
 
     public CreateAccountResponse createAccount(CreateAccountRequest request) {
         String email = request.getEmail();
@@ -66,7 +67,7 @@ public class AccountService {
                 .postalCode(postalCode)
                 .age(request.getAge())
                 .status(AccountStatus.ACTIVE)
-                .securityPin(securityPin)
+                .securityPinHash(passwordEncoder.encode(securityPin))
                 .location(location)
                 .build();
 
@@ -128,13 +129,10 @@ public class AccountService {
         return toAccountResponse(account);
     }
 
-    public void deleteAccount(String accountId, String securityPin) {
+    public void deleteAccount(String accountId) {
         Account account = findOrThrow(accountId);
         if (account.getStatus() != AccountStatus.INACTIVE) {
             throw new ConflictException(ONLY_INACTIVE_ACCOUNTS_CAN_BE_DELETED, account.getStatus());
-        }
-        if (securityPin == null || !securityPin.equals(account.getSecurityPin())) {
-            throw new InvalidSecurityPinException(INVALID_SECURITY_PIN, accountId);
         }
         repository.deleteById(accountId);
     }
@@ -163,9 +161,8 @@ public class AccountService {
     }
 
     public CountryCountResponse getCounts(CountryCode country) {
-        String normalizedCountry = country.name();
         List<Account> matching = repository.findAll().stream()
-                .filter(a -> a.getCountry().equalsIgnoreCase(normalizedCountry))
+                .filter(a -> a.getCountry().equalsIgnoreCase(country.name()))
                 .toList();
 
         TreeMap<String, List<Account>> byState = new TreeMap<>();

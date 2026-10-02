@@ -25,7 +25,7 @@ class AccountRepositoryTest {
                 .country("US")
                 .postalCode("35203")
                 .status(AccountStatus.ACTIVE)
-                .securityPin("1234")
+                .securityPinHash("1234")
                 .build();
     }
 

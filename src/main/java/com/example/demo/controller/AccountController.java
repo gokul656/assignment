@@ -7,7 +7,11 @@ import com.example.demo.dto.CountryCountResponse;
 import com.example.demo.dto.CreateAccountRequest;
 import com.example.demo.dto.CreateAccountResponse;
 import com.example.demo.dto.UpdateAccountRequest;
+import com.example.demo.dto.VerifyPinRequest;
+import com.example.demo.dto.VerifyPinResponse;
+import com.example.demo.security.RequiresVerificationToken;
 import com.example.demo.service.AccountService;
+import com.example.demo.service.PinVerificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AccountController implements AccountsApi {
 
     private final AccountService accountService;
+    private final PinVerificationService pinVerificationService;
 
     @Override
     public ResponseEntity<CreateAccountResponse> createAccount(CreateAccountRequest createAccountRequest) {
@@ -26,13 +31,20 @@ public class AccountController implements AccountsApi {
     }
 
     @Override
-    public ResponseEntity<AccountResponse> updateAccount(String accountId, UpdateAccountRequest updateAccountRequest) {
+    public ResponseEntity<VerifyPinResponse> verifyPin(String accountId, VerifyPinRequest verifyPinRequest) {
+        return ResponseEntity.ok(pinVerificationService.verifyPin(accountId, verifyPinRequest.getSecurityPin()));
+    }
+
+    @Override
+    @RequiresVerificationToken
+    public ResponseEntity<AccountResponse> updateAccount(String accountId, String xVerificationToken, UpdateAccountRequest updateAccountRequest) {
         return ResponseEntity.ok(accountService.updateAccount(accountId, updateAccountRequest));
     }
 
     @Override
-    public ResponseEntity<Void> deleteAccount(String accountId, String securityPin) {
-        accountService.deleteAccount(accountId, securityPin);
+    @RequiresVerificationToken
+    public ResponseEntity<Void> deleteAccount(String accountId, String xVerificationToken) {
+        accountService.deleteAccount(accountId);
         return ResponseEntity.noContent().build();
     }
 
@@ -46,9 +58,8 @@ public class AccountController implements AccountsApi {
         return ResponseEntity.ok(accountService.getCounts(country));
     }
 
-    // Bonus (a): dedicated endpoint to change an account's status.
     @Override
-    public ResponseEntity<CreateAccountResponse> changeStatus(String accountId, ChangeStatusRequest changeStatusRequest) {
+    public ResponseEntity<CreateAccountResponse> changeStatus(String accountId, String xVerificationToken, ChangeStatusRequest changeStatusRequest) {
         return ResponseEntity.ok(accountService.changeStatus(accountId, changeStatusRequest));
     }
 }

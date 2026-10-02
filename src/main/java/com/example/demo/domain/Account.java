@@ -17,6 +17,6 @@ public class Account {
     private String postalCode;
     private Integer age;
     private AccountStatus status;
-    private String securityPin;
+    private String securityPinHash;
     private Location location;
 }

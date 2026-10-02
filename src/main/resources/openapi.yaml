@@ -82,6 +82,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /api/accounts/{accountId}/verify-pin:
+    post:
+      tags: [accounts]
+      summary: Verify an account's security PIN and obtain a short-lived, single-use verification token
+      operationId: verifyPin
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyPinRequest'
+      responses:
+        '200':
+          description: PIN verified; token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyPinResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Invalid PIN, or too many invalid attempts (temporarily locked)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/accounts/{accountId}:
     put:
       tags: [accounts]
@@ -90,6 +132,11 @@ paths:
       parameters:
         - name: accountId
           in: path
+          required: true
+          schema:
+            type: string
+        - name: X-Verification-Token
+          in: header
           required: true
           schema:
             type: string
@@ -108,6 +155,12 @@ paths:
                 $ref: '#/components/schemas/AccountResponse'
         '400':
           description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Verification token missing, expired, already used, or issued for a different account
           content:
             application/json:
               schema:
@@ -134,17 +187,16 @@ paths:
           required: true
           schema:
             type: string
-        - name: securityPin
-          in: query
+        - name: X-Verification-Token
+          in: header
           required: true
           schema:
             type: string
-            pattern: '^\d{4}$'
       responses:
         '204':
           description: Account deleted
-        '403':
-          description: Invalid security PIN
+        '401':
+          description: Verification token missing, expired, already used, or issued for a different account
           content:
             application/json:
               schema:
@@ -172,6 +224,11 @@ paths:
           required: true
           schema:
             type: string
+        - name: X-Verification-Token
+          in: header
+          required: true
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -187,6 +244,12 @@ paths:
                 $ref: '#/components/schemas/CreateAccountResponse'
         '400':
           description: Invalid status value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Verification token missing, expired, already used, or issued for a different account
           content:
             application/json:
               schema:
@@ -278,7 +341,7 @@ components:
           $ref: '#/components/schemas/AccountStatusValue'
         securityPin:
           type: string
-          description: 4-digit PIN required to authorize DELETE. Only ever returned here (and on status change).
+          description: 4-digit PIN. Use it with POST /verify-pin to obtain a verification token for PUT/DELETE/status-change. Only ever returned here (and on status change).
           example: "9348"
     UpdateAccountRequest:
       type: object
@@ -311,6 +374,26 @@ components:
       properties:
         status:
           $ref: '#/components/schemas/AccountStatusValue'
+    VerifyPinRequest:
+      type: object
+      required: [securityPin]
+      properties:
+        securityPin:
+          type: string
+          description: The 4-digit PIN returned at account creation.
+          pattern: '^\d{4}$'
+          example: "9348"
+    VerifyPinResponse:
+      type: object
+      properties:
+        verificationToken:
+          type: string
+          description: Single-use token; pass it as the X-Verification-Token header on PUT, DELETE, or the status-change endpoint.
+          example: kX9fQb3n...
+        expiresInSeconds:
+          type: integer
+          format: int64
+          example: 300
     LocationResponse:
       type: object
       properties:

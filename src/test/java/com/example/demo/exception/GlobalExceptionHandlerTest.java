@@ -150,11 +150,12 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void handleUnexpected_returns500WithMessage() {
-        ResponseEntity<ErrorResponse> response = handler.handleUnexpected(new RuntimeException("boom"));
+    void handleUnexpected_returns500WithGenericMessage_doesNotLeakInternalDetails() {
+        ResponseEntity<ErrorResponse> response = handler.handleUnexpected(new RuntimeException("npe at com.internal.SecretClass.method(SecretClass.java:42)"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
-        assertThat(response.getBody().message()).isEqualTo("boom");
+        assertThat(response.getBody().message()).isEqualTo(Constants.UNEXPECTED_ERROR);
+        assertThat(response.getBody().message()).doesNotContain("SecretClass");
         assertThat(response.getBody().fieldErrors()).isEmpty();
     }
 }

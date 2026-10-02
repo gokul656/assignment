@@ -10,6 +10,9 @@ public final class Constants {
     public static final String ONLY_ACTIVE_ACCOUNTS_CAN_BE_UPDATED = "Only Active accounts can be updated (current status: %s)";
     public static final String ONLY_INACTIVE_ACCOUNTS_CAN_BE_DELETED = "Only Inactive accounts can be deleted (current status: %s)";
     public static final String INVALID_SECURITY_PIN = "Invalid security PIN for account '%s'";
+    public static final String TOO_MANY_PIN_ATTEMPTS = "Too many invalid PIN attempts for account '%s'. Try again in 15 minutes.";
+    public static final String VERIFICATION_TOKEN_REQUIRED = "A valid X-Verification-Token header is required";
+    public static final String INVALID_OR_EXPIRED_TOKEN = "Verification token is missing, invalid, expired, or already used";
     public static final String ACCOUNT_ID_OR_EMAIL_REQUIRED = "Either 'accountId' or 'email' must be provided";
     public static final String ACCOUNT_NOT_FOUND_BY_EMAIL = "No account found for email '%s'";
     public static final String ACCOUNT_NOT_FOUND_BY_ID = "No account found with id '%s'";
@@ -21,4 +24,5 @@ public final class Constants {
     // GlobalExceptionHandler
     public static final String VALIDATION_FAILED = "Validation failed";
     public static final String INVALID_FIELD_VALUE = "Invalid value for field '%s': %s";
+    public static final String UNEXPECTED_ERROR = "An unexpected error occurred. Please try again later.";
 }

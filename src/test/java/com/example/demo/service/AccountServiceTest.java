@@ -12,7 +12,6 @@ import com.example.demo.dto.CreateAccountResponse;
 import com.example.demo.dto.UpdateAccountRequest;
 import com.example.demo.exception.AccountNotFoundException;
 import com.example.demo.exception.ConflictException;
-import com.example.demo.exception.InvalidSecurityPinException;
 import com.example.demo.exception.ValidationException;
 import com.example.demo.repository.AccountRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,6 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,7 +41,7 @@ class AccountServiceTest {
     @BeforeEach
     void setUp() {
         repository = new AccountRepository();
-        accountService = new AccountService(repository, zippopotamClient);
+        accountService = new AccountService(repository, zippopotamClient, new BCryptPasswordEncoder());
         lenient().when(zippopotamClient.lookup(anyString(), anyString()))
                 .thenReturn(new PostalLocation("Birmingham", "AL", -86.8, 33.5));
     }
@@ -199,27 +199,16 @@ class AccountServiceTest {
     void deleteAccount_requiresInactiveStatus() {
         CreateAccountResponse created = accountService.createAccount(validRequest("del-active@example.com"));
 
-        assertThatThrownBy(() -> accountService.deleteAccount(created.getAccountId(), created.getSecurityPin()))
+        assertThatThrownBy(() -> accountService.deleteAccount(created.getAccountId()))
                 .isInstanceOf(ConflictException.class);
     }
 
     @Test
-    void deleteAccount_requiresCorrectPin() {
-        CreateAccountResponse created = accountService.createAccount(validRequest("del-wrongpin@example.com"));
-        accountService.changeStatus(created.getAccountId(), new ChangeStatusRequest().status(AccountStatusValue.INACTIVE));
-
-        assertThatThrownBy(() -> accountService.deleteAccount(created.getAccountId(), "0000"))
-                .isInstanceOf(InvalidSecurityPinException.class);
-        assertThatThrownBy(() -> accountService.deleteAccount(created.getAccountId(), null))
-                .isInstanceOf(InvalidSecurityPinException.class);
-    }
-
-    @Test
-    void deleteAccount_succeedsWhenInactiveAndPinMatches() {
+    void deleteAccount_succeedsWhenInactive() {
         CreateAccountResponse created = accountService.createAccount(validRequest("del-ok@example.com"));
         accountService.changeStatus(created.getAccountId(), new ChangeStatusRequest().status(AccountStatusValue.INACTIVE));
 
-        accountService.deleteAccount(created.getAccountId(), created.getSecurityPin());
+        accountService.deleteAccount(created.getAccountId());
 
         assertThatThrownBy(() -> accountService.getAccount(created.getAccountId(), null))
                 .isInstanceOf(AccountNotFoundException.class);
@@ -275,7 +264,7 @@ class AccountServiceTest {
                 .country("US")
                 .postalCode("00000")
                 .status(AccountStatus.ACTIVE)
-                .securityPin("0000")
+                .securityPinHash("0000")
                 .location(null)
                 .build();
         repository.save(noLocationAccount);
