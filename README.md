@@ -6,6 +6,8 @@ Place, State, Longitude and Latitude.
 
 ## Run
 
+**Make sure to run `mvn clean install` before running the app.**
+
 ```
 docker compose up -d   # starts Redis on localhost:6379
 mvnw spring-boot:run
