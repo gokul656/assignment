@@ -26,10 +26,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
 
 import static com.example.demo.exception.Constants.*;
 
@@ -37,27 +38,18 @@ import static com.example.demo.exception.Constants.*;
 @RequiredArgsConstructor
 public class AccountService {
 
+    private static final String UNKNOWN = "UNKNOWN";
+
     private final AccountRepository repository;
     private final ZippopotamClient zippopotamClient;
     private final PasswordEncoder passwordEncoder;
 
     public CreateAccountResponse createAccount(CreateAccountRequest request) {
         String email = request.getEmail();
-        if (repository.existsByEmail(email)) {
-            throw new ConflictException(EMAIL_ALREADY_EXISTS, email);
-        }
+        if (repository.existsByEmail(email)) throw new ConflictException(EMAIL_ALREADY_EXISTS, email);
+
         String country = request.getCountry().name();
         String postalCode = request.getPostalCode();
-
-        PostalLocation postalLocation = zippopotamClient.lookup(country, postalCode);
-        Location location = Location.builder()
-                .place(postalLocation.place())
-                .state(postalLocation.state())
-                .country(country)
-                .postalCode(postalCode)
-                .longitude(postalLocation.longitude())
-                .latitude(postalLocation.latitude())
-                .build();
 
         String accountId = generateUniqueAccountId();
         String securityPin = IdGenerator.randomSecurityPin();
@@ -71,7 +63,7 @@ public class AccountService {
                 .age(request.getAge())
                 .status(AccountStatus.ACTIVE)
                 .securityPinHash(passwordEncoder.encode(securityPin))
-                .location(location)
+                .location(resolveLocation(country, postalCode))
                 .build();
 
         account = repository.save(account);
@@ -88,64 +80,26 @@ public class AccountService {
             throw new ConflictException(ONLY_ACTIVE_ACCOUNTS_CAN_BE_UPDATED, account.getStatus());
         }
 
-        if (request.getName() != null) {
-            account.setName(request.getName());
-        }
-        if (request.getEmail() != null) {
-            String newEmail = request.getEmail();
-            if (!newEmail.equalsIgnoreCase(account.getEmail()) && repository.existsByEmail(newEmail)) {
-                throw new ConflictException(EMAIL_ALREADY_EXISTS, newEmail);
-            }
-            String oldEmail = account.getEmail();
-            account.setEmail(newEmail);
-            repository.reindexEmail(oldEmail, account);
-        }
-        if (request.getAge() != null) {
-            account.setAge(request.getAge());
-        }
-        if (request.getStatus() != null) {
-            account.setStatus(AccountStatus.valueOf(request.getStatus().name()));
-        }
+        List.<BiConsumer<Account, UpdateAccountRequest>>of(this::applyName, this::applyEmail, this::applyAge, this::applyStatus)
+                .forEach(fieldUpdate -> fieldUpdate.accept(account, request));
+        relocateIfNeeded(account, request);
 
-        boolean countryChanged = request.getCountry() != null && !request.getCountry().name().equalsIgnoreCase(account.getCountry());
-        boolean postalCodeChanged = request.getPostalCode() != null && !request.getPostalCode().equals(account.getPostalCode());
-
-        if (request.getCountry() != null) {
-            account.setCountry(request.getCountry().name());
-        }
-        if (request.getPostalCode() != null) {
-            account.setPostalCode(request.getPostalCode());
-        }
-
-        if (countryChanged || postalCodeChanged) {
-            PostalLocation postalLocation = zippopotamClient.lookup(account.getCountry(), account.getPostalCode());
-            account.setLocation(Location.builder()
-                    .place(postalLocation.place())
-                    .state(postalLocation.state())
-                    .country(account.getCountry())
-                    .postalCode(account.getPostalCode())
-                    .longitude(postalLocation.longitude())
-                    .latitude(postalLocation.latitude())
-                    .build());
-        }
-
-        repository.save(account);
-        return toAccountResponse(account);
+        return toAccountResponse(repository.save(account));
     }
 
     @ValidatePin
     public void deleteAccount(String accountId, DeleteAccountRequest request) {
         Account account = findOrThrow(accountId);
-        if (account.getStatus() != AccountStatus.INACTIVE) {
+        if (account.getStatus() != AccountStatus.INACTIVE)
             throw new ConflictException(ONLY_INACTIVE_ACCOUNTS_CAN_BE_DELETED, account.getStatus());
-        }
+
         repository.deleteById(accountId);
     }
 
     public AccountResponse getAccount(String accountId, String email) {
-        if ((accountId == null || accountId.isBlank()) && (email == null || email.isBlank())) {
+        if ((accountId == null || accountId.isBlank()) && (email == null || email.isBlank()))
             throw new ValidationException(ACCOUNT_ID_OR_EMAIL_REQUIRED);
-        }
+
         Account account;
         if (accountId != null && !accountId.isBlank()) {
             account = findOrThrow(accountId);
@@ -153,6 +107,7 @@ public class AccountService {
             account = repository.findByEmail(email)
                     .orElseThrow(() -> new AccountNotFoundException(ACCOUNT_NOT_FOUND_BY_EMAIL, email));
         }
+
         return toAccountResponse(account);
     }
 
@@ -171,38 +126,93 @@ public class AccountService {
                 .filter(a -> a.getCountry().equalsIgnoreCase(country.name()))
                 .toList();
 
-        TreeMap<String, List<Account>> byState = new TreeMap<>();
-        for (Account account : matching) {
-            String state = account.getLocation() != null && account.getLocation().getState() != null
-                    ? account.getLocation().getState()
-                    : "UNKNOWN";
-            byState.computeIfAbsent(state, k -> new ArrayList<>()).add(account);
-        }
+        Map<String, List<Account>> byState = matching.stream()
+                .collect(Collectors.groupingBy(this::stateOrUnknown, TreeMap::new, Collectors.toList()));
 
         List<StateCountResponse> states = byState.entrySet().stream()
-                .map(entry -> {
-                    TreeMap<String, Long> byPlace = new TreeMap<>();
-                    for (Account account : entry.getValue()) {
-                        String place = account.getLocation() != null && account.getLocation().getPlace() != null
-                                ? account.getLocation().getPlace()
-                                : "UNKNOWN";
-                        byPlace.merge(place, 1L, Long::sum);
-                    }
-                    List<PlaceCountResponse> places = byPlace.entrySet().stream()
-                            .map(e -> new PlaceCountResponse().place(e.getKey()).count(e.getValue()))
-                            .toList();
-                    return new StateCountResponse()
-                            .state(entry.getKey())
-                            .count((long) entry.getValue().size())
-                            .places(places);
-                })
-                .sorted(Comparator.comparing(StateCountResponse::getState))
+                .map(entry -> toStateCountResponse(entry.getKey(), entry.getValue()))
                 .toList();
 
         return new CountryCountResponse()
                 .country(country)
                 .count((long) matching.size())
                 .states(states);
+    }
+
+    private StateCountResponse toStateCountResponse(String state, List<Account> accountsInState) {
+        Map<String, Long> byPlace = accountsInState.stream()
+                .collect(Collectors.groupingBy(this::placeOrUnknown, TreeMap::new, Collectors.counting()));
+
+        List<PlaceCountResponse> places = byPlace.entrySet().stream()
+                .map(entry -> new PlaceCountResponse().place(entry.getKey()).count(entry.getValue()))
+                .toList();
+
+        return new StateCountResponse()
+                .state(state)
+                .count((long) accountsInState.size())
+                .places(places);
+    }
+
+    private String stateOrUnknown(Account account) {
+        Location location = account.getLocation();
+        return location != null && location.getState() != null ? location.getState() : UNKNOWN;
+    }
+
+    private String placeOrUnknown(Account account) {
+        Location location = account.getLocation();
+        return location != null && location.getPlace() != null ? location.getPlace() : UNKNOWN;
+    }
+
+    private void applyName(Account account, UpdateAccountRequest request) {
+        if (request.getName() != null) {
+            account.setName(request.getName());
+        }
+    }
+
+    private void applyEmail(Account account, UpdateAccountRequest request) {
+        if (request.getEmail() == null) return;
+
+        String newEmail = request.getEmail();
+        if (!newEmail.equalsIgnoreCase(account.getEmail()) && repository.existsByEmail(newEmail))
+            throw new ConflictException(EMAIL_ALREADY_EXISTS, newEmail);
+
+        String oldEmail = account.getEmail();
+        account.setEmail(newEmail);
+        repository.reindexEmail(oldEmail, account);
+    }
+
+    private void applyAge(Account account, UpdateAccountRequest request) {
+        if (request.getAge() != null) account.setAge(request.getAge());
+    }
+
+    private void applyStatus(Account account, UpdateAccountRequest request) {
+        if (request.getStatus() != null) {
+            account.setStatus(AccountStatus.valueOf(request.getStatus().name()));
+        }
+    }
+
+    private void relocateIfNeeded(Account account, UpdateAccountRequest request) {
+        boolean countryChanged = request.getCountry() != null && !request.getCountry().name().equalsIgnoreCase(account.getCountry());
+        boolean postalCodeChanged = request.getPostalCode() != null && !request.getPostalCode().equals(account.getPostalCode());
+
+        if (request.getCountry() != null) account.setCountry(request.getCountry().name());
+        if (request.getPostalCode() != null) account.setPostalCode(request.getPostalCode());
+
+        if (countryChanged || postalCodeChanged) {
+            account.setLocation(resolveLocation(account.getCountry(), account.getPostalCode()));
+        }
+    }
+
+    private Location resolveLocation(String country, String postalCode) {
+        PostalLocation postalLocation = zippopotamClient.lookup(country, postalCode);
+        return Location.builder()
+                .place(postalLocation.place())
+                .state(postalLocation.state())
+                .country(country)
+                .postalCode(postalCode)
+                .longitude(postalLocation.longitude())
+                .latitude(postalLocation.latitude())
+                .build();
     }
 
     private Account findOrThrow(String accountId) {
@@ -223,22 +233,23 @@ public class AccountService {
     }
 
     private AccountResponse toAccountResponse(Account account) {
-        LocationResponse locationResponse = null;
-        if (account.getLocation() != null) {
-            Location loc = account.getLocation();
-            locationResponse = new LocationResponse()
-                    .place(loc.getPlace())
-                    .state(loc.getState())
-                    .country(CountryCode.valueOf(loc.getCountry()))
-                    .postalCode(loc.getPostalCode())
-                    .longitude(loc.getLongitude())
-                    .latitude(loc.getLatitude());
-        }
         return new AccountResponse()
                 .accountId(account.getAccountId())
                 .email(account.getEmail())
                 .status(toStatusValue(account.getStatus()))
                 .age(account.getAge())
-                .location(locationResponse);
+                .location(toLocationResponse(account.getLocation()));
+    }
+
+    private LocationResponse toLocationResponse(Location location) {
+        if (location == null) return null;
+
+        return new LocationResponse()
+                .place(location.getPlace())
+                .state(location.getState())
+                .country(CountryCode.valueOf(location.getCountry()))
+                .postalCode(location.getPostalCode())
+                .longitude(location.getLongitude())
+                .latitude(location.getLatitude());
     }
 }

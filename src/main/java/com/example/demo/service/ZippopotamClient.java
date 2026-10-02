@@ -1,10 +1,12 @@
 package com.example.demo.service;
 
+import com.example.demo.config.CacheConfig;
 import com.example.demo.exception.PostalLookupException;
 import com.example.demo.model.PostalLocation;
 import com.example.demo.model.ZippopotamResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
@@ -19,6 +21,7 @@ public class ZippopotamClient {
 
     private final RestClient zippopotamRestClient;
 
+    @Cacheable(cacheNames = CacheConfig.POSTAL_LOCATIONS_CACHE, key = "#countryCode.toLowerCase() + ':' + #postalCode")
     public PostalLocation lookup(String countryCode, String postalCode) {
         try {
             ZippopotamResponse response = zippopotamRestClient.get()
@@ -26,9 +29,8 @@ public class ZippopotamClient {
                     .retrieve()
                     .body(ZippopotamResponse.class);
 
-            if (response == null || response.places() == null || response.places().isEmpty()) {
+            if (response == null || response.places() == null || response.places().isEmpty())
                 throw new PostalLookupException(POSTAL_LOOKUP_NOT_FOUND, countryCode, postalCode);
-            }
 
             ZippopotamResponse.Place place = response.places().get(0);
             return new PostalLocation(
@@ -46,9 +48,7 @@ public class ZippopotamClient {
     }
 
     private Double parseCoordinate(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
+        if (value == null || value.isBlank()) return null;
 
         try {
             return Double.parseDouble(value);

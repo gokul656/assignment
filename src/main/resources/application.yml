@@ -1,6 +1,12 @@
 spring:
   application:
     name: demo
+  cache:
+    type: redis
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 management:
   endpoints:
@@ -9,7 +15,10 @@ management:
         include: health,info,metrics
   endpoint:
     health:
-      show-details: when-authorized
+      show-details: always
+  health:
+    redis:
+      enabled: false
   info:
     env:
       enabled: true

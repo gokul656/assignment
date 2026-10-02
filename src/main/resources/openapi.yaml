@@ -244,8 +244,12 @@ components:
       enum: [REQUESTED, ACTIVE, INACTIVE]
     CreateStatusValue:
       type: string
-      description: Only "Requested" is accepted on account creation.
-      enum: [Requested]
+      description: Only "REQUESTED" is accepted on account creation.
+      enum: [REQUESTED]
+    ChangeStatusValue:
+      type: string
+      description: REQUESTED is a create-time-only status; this endpoint can only move an account between ACTIVE and INACTIVE.
+      enum: [ACTIVE, INACTIVE]
     CreateAccountRequest:
       type: object
       required: [name, email, country, postalCode]
@@ -278,7 +282,7 @@ components:
         status:
           allOf:
             - $ref: '#/components/schemas/CreateStatusValue'
-          description: Optional; if present, must be "Requested". The persisted account is always created as ACTIVE regardless.
+          description: Optional; if present, must be "REQUESTED". The persisted account is always created as ACTIVE regardless.
     CreateAccountResponse:
       type: object
       properties:
@@ -337,7 +341,7 @@ components:
       required: [status, securityPin]
       properties:
         status:
-          $ref: '#/components/schemas/AccountStatusValue'
+          $ref: '#/components/schemas/ChangeStatusValue'
         securityPin:
           type: string
           description: The 4-digit PIN returned at account creation. Validated by PinValidationAspect before this call runs.

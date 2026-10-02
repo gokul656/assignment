@@ -6,8 +6,7 @@ public final class IdGenerator {
 
     private static final String ALPHANUMERIC = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-    private IdGenerator() {
-    }
+    private IdGenerator() {}
 
     public static String randomAccountId() {
         return RandomStringUtils.secure().next(6, ALPHANUMERIC);

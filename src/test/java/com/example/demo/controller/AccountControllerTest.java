@@ -3,6 +3,7 @@ package com.example.demo.controller;
 import com.example.demo.dto.AccountResponse;
 import com.example.demo.dto.AccountStatusValue;
 import com.example.demo.dto.ChangeStatusRequest;
+import com.example.demo.dto.ChangeStatusValue;
 import com.example.demo.dto.CountryCode;
 import com.example.demo.dto.CreateAccountRequest;
 import com.example.demo.dto.CreateAccountResponse;
@@ -101,7 +102,7 @@ class AccountControllerTest {
 
     @Test
     void createAccount_nonRequestedStatus_returns400WithFieldError() throws Exception {
-        // "ACTIVE" isn't a valid create-time status (only "Requested" is). Also raw JSON, and can't
+        // "ACTIVE" isn't a valid create-time status (only "REQUESTED" is). Also raw JSON, and can't
         // be combined with the invalid-country case above: Jackson's enum deserialization bails on
         // the first bad enum it hits, so only one unparseable enum field surfaces per request.
         mockMvc.perform(post("/api/accounts")
@@ -187,15 +188,21 @@ class AccountControllerTest {
 
         mockMvc.perform(patch("/api/accounts/ABC123/status")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ChangeStatusRequest().status(AccountStatusValue.INACTIVE).securityPin("1234"))))
+                        .content(objectMapper.writeValueAsString(new ChangeStatusRequest().status(ChangeStatusValue.INACTIVE).securityPin("1234"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("INACTIVE"));
     }
 
-    // Bean Validation on securityPin (required, ^\d{4}$) is generated identically for all three
-    // protected DTOs from the same openapi.yaml pattern, and exception-to-status mapping is a
-    // GlobalExceptionHandler concern already covered directly in GlobalExceptionHandlerTest - so
-    // these are exercised once here (PUT) rather than repeated per endpoint.
+    @Test
+    void changeStatus_requested_returns400WithFieldError() throws Exception {
+        // REQUESTED is create-time-only (ChangeStatusValue only has ACTIVE/INACTIVE) - rejected by
+        // Bean Validation before AccountService.changeStatus ever runs.
+        mockMvc.perform(patch("/api/accounts/ABC123/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"REQUESTED\",\"securityPin\":\"1234\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.status").exists());
+    }
 
     @Test
     void updateAccount_missingPin_returns400() throws Exception {

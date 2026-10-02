@@ -5,6 +5,7 @@ import com.example.demo.model.AccountStatus;
 import com.example.demo.dto.AccountResponse;
 import com.example.demo.dto.AccountStatusValue;
 import com.example.demo.dto.ChangeStatusRequest;
+import com.example.demo.dto.ChangeStatusValue;
 import com.example.demo.dto.CountryCode;
 import com.example.demo.dto.CountryCountResponse;
 import com.example.demo.dto.CreateAccountRequest;
@@ -150,7 +151,7 @@ class AccountServiceTest {
     @Test
     void updateAccount_onInactiveAccount_throwsConflict() {
         CreateAccountResponse created = accountService.createAccount(validRequest("inactive@example.com"));
-        accountService.changeStatus(created.getAccountId(), new ChangeStatusRequest().status(AccountStatusValue.INACTIVE));
+        accountService.changeStatus(created.getAccountId(), new ChangeStatusRequest().status(ChangeStatusValue.INACTIVE));
 
         UpdateAccountRequest update = new UpdateAccountRequest().name("Bob");
         assertThatThrownBy(() -> accountService.updateAccount(created.getAccountId(), update))
@@ -191,7 +192,7 @@ class AccountServiceTest {
         assertThatThrownBy(() -> accountService.deleteAccount(created.getAccountId(), deleteRequest))
                 .isInstanceOf(ConflictException.class);
 
-        accountService.changeStatus(created.getAccountId(), new ChangeStatusRequest().status(AccountStatusValue.INACTIVE));
+        accountService.changeStatus(created.getAccountId(), new ChangeStatusRequest().status(ChangeStatusValue.INACTIVE));
         accountService.deleteAccount(created.getAccountId(), deleteRequest);
 
         assertThatThrownBy(() -> accountService.getAccount(created.getAccountId(), null))
@@ -202,7 +203,7 @@ class AccountServiceTest {
     void changeStatus_updatesStatus() {
         CreateAccountResponse created = accountService.createAccount(validRequest("status@example.com"));
 
-        CreateAccountResponse response = accountService.changeStatus(created.getAccountId(), new ChangeStatusRequest().status(AccountStatusValue.INACTIVE));
+        CreateAccountResponse response = accountService.changeStatus(created.getAccountId(), new ChangeStatusRequest().status(ChangeStatusValue.INACTIVE));
 
         assertThat(response.getStatus()).isEqualTo(AccountStatusValue.INACTIVE);
     }

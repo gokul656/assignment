@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import tools.jackson.core.JacksonException;
 
 import java.time.Instant;
@@ -50,9 +51,9 @@ public class GlobalExceptionHandler {
                 fieldErrors.put(field, String.format(INVALID_FIELD_VALUE, field, rootCauseMessage(je)));
             }
         }
-        if (fieldErrors.isEmpty()) {
-            log.warn("Unreadable request body", ex);
-        }
+
+        if (fieldErrors.isEmpty()) log.warn("Unreadable request body", ex);
+
         String message = fieldErrors.isEmpty() ? MALFORMED_REQUEST_BODY : VALIDATION_FAILED;
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse(Instant.now(), HttpStatus.BAD_REQUEST.value(), HttpStatus.BAD_REQUEST.getReasonPhrase(), message, fieldErrors));
@@ -66,12 +67,16 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
-        // ex.getMessage() embeds the internal Java type name (e.g. "...required type 'com.example.demo.dto.CountryCode'") -
-        // build the field error from just the param name and the value the caller actually sent instead.
         String field = ex.getName();
         Map<String, String> fieldErrors = Map.of(field, String.format(INVALID_FIELD_VALUE, field, ex.getValue()));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse(Instant.now(), HttpStatus.BAD_REQUEST.value(), HttpStatus.BAD_REQUEST.getReasonPhrase(), VALIDATION_FAILED, fieldErrors));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResourceFound(NoResourceFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse(Instant.now(), HttpStatus.NOT_FOUND.value(), HttpStatus.NOT_FOUND.getReasonPhrase(), ex.getMessage(), Collections.emptyMap()));
     }
 
     @ExceptionHandler(Exception.class)
@@ -82,11 +87,6 @@ public class GlobalExceptionHandler {
                         UNEXPECTED_ERROR, Collections.emptyMap()));
     }
 
-    /**
-     * Jackson's own exception message is a multi-line diagnostic dump (type name, byte offset,
-     * reference chain) meant for logs, not API consumers. The actual human-readable cause
-     * (e.g. "Unexpected value 'CA'") is the innermost cause's message.
-     */
     private String rootCauseMessage(Throwable t) {
         Throwable cause = t;
         while (cause.getCause() != null && cause.getCause() != cause) {

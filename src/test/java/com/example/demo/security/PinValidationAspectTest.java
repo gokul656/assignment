@@ -2,7 +2,7 @@ package com.example.demo.security;
 
 import com.example.demo.model.Account;
 import com.example.demo.model.AccountStatus;
-import com.example.demo.dto.AccountStatusValue;
+import com.example.demo.dto.ChangeStatusValue;
 import com.example.demo.dto.ChangeStatusRequest;
 import com.example.demo.dto.DeleteAccountRequest;
 import com.example.demo.dto.UpdateAccountRequest;
@@ -68,7 +68,7 @@ class PinValidationAspectTest {
         Function<String, Object> updateRequest = pin -> new UpdateAccountRequest().securityPin(pin);
         Function<String, Object> deleteRequest = pin -> new DeleteAccountRequest().securityPin(pin);
         Function<String, Object> changeStatusRequest =
-                pin -> new ChangeStatusRequest().status(AccountStatusValue.INACTIVE).securityPin(pin);
+                pin -> new ChangeStatusRequest().status(ChangeStatusValue.INACTIVE).securityPin(pin);
 
         return Stream.of(
                 Arguments.of("updateAccount", updateRequest),

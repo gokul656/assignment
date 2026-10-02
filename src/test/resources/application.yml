@@ -3,3 +3,5 @@ spring:
     name: demo
   profiles:
     active: test
+  cache:
+    type: simple

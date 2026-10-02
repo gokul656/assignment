@@ -1,7 +1,7 @@
 package com.example.demo.config;
 
-import com.example.demo.dto.AccountStatusValue;
 import com.example.demo.dto.ChangeStatusRequest;
+import com.example.demo.dto.ChangeStatusValue;
 import com.example.demo.dto.CountryCode;
 import com.example.demo.dto.CreateAccountRequest;
 import com.example.demo.dto.CreateAccountResponse;
@@ -50,7 +50,7 @@ public class DemoDataSeeder implements CommandLineRunner {
             CreateAccountResponse created = accountService.createAccount(
                     new CreateAccountRequest().name("Ivy").email(email).country(country).postalCode(postalCode).age(age));
             accountService.changeStatus(created.getAccountId(),
-                    new ChangeStatusRequest().status(AccountStatusValue.INACTIVE).securityPin(created.getSecurityPin()));
+                    new ChangeStatusRequest().status(ChangeStatusValue.INACTIVE).securityPin(created.getSecurityPin()));
             log.info("Seeded inactive account Ivy ({}) -> id={}, pin={} (ready for DELETE demo)",
                     email, created.getAccountId(), created.getSecurityPin());
         } catch (Exception e) {
