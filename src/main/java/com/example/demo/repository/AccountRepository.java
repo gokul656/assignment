@@ -1,63 +1,30 @@
 package com.example.demo.repository;
 
 import com.example.demo.model.Account;
-import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
-@Repository
-public class AccountRepository {
+public interface AccountRepository extends JpaRepository<Account, String> {
 
-    private final ConcurrentHashMap<String, Account> accountsById = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, String> accountIdByEmail = new ConcurrentHashMap<>();
+    Optional<Account> findByEmailIgnoreCase(String email);
 
-    public Account save(Account account) {
-        accountsById.put(account.getAccountId(), account);
-        accountIdByEmail.put(normalizeEmail(account.getEmail()), account.getAccountId());
-        return account;
-    }
+    boolean existsByEmailIgnoreCase(String email);
 
-    public Optional<Account> findById(String accountId) {
-        return Optional.ofNullable(accountsById.get(accountId));
-    }
+    long countByCountryIgnoreCase(String country);
 
-    public Optional<Account> findByEmail(String email) {
-        String id = accountIdByEmail.get(normalizeEmail(email));
-        return id == null ? Optional.empty() : findById(id);
-    }
-
-    public boolean existsByEmail(String email) {
-        return accountIdByEmail.containsKey(normalizeEmail(email));
-    }
-
-    public boolean existsById(String accountId) {
-        return accountsById.containsKey(accountId);
-    }
-
-    public void deleteById(String accountId) {
-        Account removed = accountsById.remove(accountId);
-        if (removed != null) {
-            accountIdByEmail.remove(normalizeEmail(removed.getEmail()));
-        }
-    }
-
-    public List<Account> findAll() {
-        return List.copyOf(accountsById.values());
-    }
-
-    public Collection<String> allIds() {
-        return accountsById.keySet();
-    }
-
-    public void reindexEmail(String oldEmail, Account account) {
-        accountIdByEmail.remove(normalizeEmail(oldEmail));
-        accountIdByEmail.put(normalizeEmail(account.getEmail()), account.getAccountId());
-    }
-
-    private String normalizeEmail(String email) {
-        return email == null ? null : email.toLowerCase();
-    }
+    // Aggregation (COUNT/GROUP BY) runs in the DB rather than loading every matching Account into
+    // memory and grouping in Java; null state/place (no resolved location) falls back to UNKNOWN.
+    @Query("""
+            select coalesce(a.location.state, 'UNKNOWN') as state,
+                   coalesce(a.location.place, 'UNKNOWN') as place,
+                   count(a) as count
+            from Account a
+            where upper(a.country) = upper(:country)
+            group by coalesce(a.location.state, 'UNKNOWN'), coalesce(a.location.place, 'UNKNOWN')
+            """)
+    List<StatePlaceCount> countGroupedByStateAndPlace(@Param("country") String country);
 }

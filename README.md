@@ -23,6 +23,8 @@ Redis caches postal code lookups (`ZippopotamClient`, see below) — it's option
 dependency: if it's unreachable, lookups just skip the cache and call zippopotam.us directly every
 time.
 
+Accounts are persisted via Spring Data JPA to an in-memory H2 database (`spring.jpa.hibernate.ddl-auto: create-drop`) — data doesn't survive a restart, same as before, just backed by a real relational DB instead of a hand-rolled `ConcurrentHashMap`.
+
 ## API
 
 | Method | Path                                           | Purpose                     | PIN needed?        |

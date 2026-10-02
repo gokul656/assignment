@@ -4,6 +4,16 @@ spring:
   jackson:
     deserialization:
       fail-on-unknown-properties: true
+  datasource:
+    url: jdbc:h2:mem:accountsdb;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+    show-sql: false
   cache:
     type: redis
   data:
@@ -21,7 +31,7 @@ management:
       show-details: always
   health:
     redis:
-      enabled: false
+      enabled: true
   info:
     env:
       enabled: true

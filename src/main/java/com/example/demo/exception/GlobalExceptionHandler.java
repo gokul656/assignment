@@ -46,8 +46,6 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException ex) {
         Map<String, String> fieldErrors = new LinkedHashMap<>();
         if (ex.getCause() instanceof UnrecognizedPropertyException upe) {
-            // upe.getMessage() dumps the declaring class name and the full list of known
-            // properties - build the field error from just the rejected property name instead.
             fieldErrors.put(upe.getPropertyName(), String.format(UNRECOGNIZED_FIELD, upe.getPropertyName()));
         } else if (ex.getCause() instanceof JacksonException je && !je.getPath().isEmpty()) {
             var lastRef = je.getPath().get(je.getPath().size() - 1);
