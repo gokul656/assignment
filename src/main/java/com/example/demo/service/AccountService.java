@@ -20,12 +20,14 @@ import com.example.demo.exception.ConflictException;
 import com.example.demo.exception.ValidationException;
 import com.example.demo.model.PostalLocation;
 import com.example.demo.repository.AccountRepository;
+import com.example.demo.repository.StatePlaceCount;
 import com.example.demo.security.ValidatePin;
 import com.example.demo.util.IdGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -37,8 +39,6 @@ import static com.example.demo.exception.Constants.*;
 @Service
 @RequiredArgsConstructor
 public class AccountService {
-
-    private static final String UNKNOWN = "UNKNOWN";
 
     private final AccountRepository repository;
     private final ZippopotamClient zippopotamClient;
@@ -122,12 +122,12 @@ public class AccountService {
     }
 
     public CountryCountResponse getCounts(CountryCode country) {
-        List<Account> matching = repository.findAll().stream()
-                .filter(a -> a.getCountry().equalsIgnoreCase(country.name()))
-                .toList();
+        String countryName = country.name();
+        long totalCount = repository.countByCountryIgnoreCase(countryName);
+        List<StatePlaceCount> rows = repository.countGroupedByStateAndPlace(countryName);
 
-        Map<String, List<Account>> byState = matching.stream()
-                .collect(Collectors.groupingBy(this::stateOrUnknown, TreeMap::new, Collectors.toList()));
+        Map<String, List<StatePlaceCount>> byState = rows.stream()
+                .collect(Collectors.groupingBy(StatePlaceCount::getState, TreeMap::new, Collectors.toList()));
 
         List<StateCountResponse> states = byState.entrySet().stream()
                 .map(entry -> toStateCountResponse(entry.getKey(), entry.getValue()))
@@ -135,32 +135,22 @@ public class AccountService {
 
         return new CountryCountResponse()
                 .country(country)
-                .count((long) matching.size())
+                .count(totalCount)
                 .states(states);
     }
 
-    private StateCountResponse toStateCountResponse(String state, List<Account> accountsInState) {
-        Map<String, Long> byPlace = accountsInState.stream()
-                .collect(Collectors.groupingBy(this::placeOrUnknown, TreeMap::new, Collectors.counting()));
-
-        List<PlaceCountResponse> places = byPlace.entrySet().stream()
-                .map(entry -> new PlaceCountResponse().place(entry.getKey()).count(entry.getValue()))
+    private StateCountResponse toStateCountResponse(String state, List<StatePlaceCount> rows) {
+        List<PlaceCountResponse> places = rows.stream()
+                .sorted(Comparator.comparing(StatePlaceCount::getPlace))
+                .map(row -> new PlaceCountResponse().place(row.getPlace()).count(row.getCount()))
                 .toList();
+
+        long stateTotal = rows.stream().mapToLong(StatePlaceCount::getCount).sum();
 
         return new StateCountResponse()
                 .state(state)
-                .count((long) accountsInState.size())
+                .count(stateTotal)
                 .places(places);
-    }
-
-    private String stateOrUnknown(Account account) {
-        Location location = account.getLocation();
-        return location != null && location.getState() != null ? location.getState() : UNKNOWN;
-    }
-
-    private String placeOrUnknown(Account account) {
-        Location location = account.getLocation();
-        return location != null && location.getPlace() != null ? location.getPlace() : UNKNOWN;
     }
 
     private void applyName(Account account, UpdateAccountRequest request) {
