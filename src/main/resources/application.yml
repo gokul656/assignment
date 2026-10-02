@@ -1,6 +1,9 @@
 spring:
   application:
     name: demo
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
   cache:
     type: redis
   data:
