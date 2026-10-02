@@ -46,7 +46,7 @@ public class AccountService {
 
     public CreateAccountResponse createAccount(CreateAccountRequest request) {
         String email = request.getEmail();
-        if (repository.existsByEmail(email)) throw new ConflictException(EMAIL_ALREADY_EXISTS, email);
+        if (repository.existsByEmailIgnoreCase(email)) throw new ConflictException(EMAIL_ALREADY_EXISTS, email);
 
         String country = request.getCountry().name();
         String postalCode = request.getPostalCode();
@@ -104,7 +104,7 @@ public class AccountService {
         if (accountId != null && !accountId.isBlank()) {
             account = findOrThrow(accountId);
         } else {
-            account = repository.findByEmail(email)
+            account = repository.findByEmailIgnoreCase(email)
                     .orElseThrow(() -> new AccountNotFoundException(ACCOUNT_NOT_FOUND_BY_EMAIL, email));
         }
 
@@ -173,12 +173,10 @@ public class AccountService {
         if (request.getEmail() == null) return;
 
         String newEmail = request.getEmail();
-        if (!newEmail.equalsIgnoreCase(account.getEmail()) && repository.existsByEmail(newEmail))
+        if (!newEmail.equalsIgnoreCase(account.getEmail()) && repository.existsByEmailIgnoreCase(newEmail))
             throw new ConflictException(EMAIL_ALREADY_EXISTS, newEmail);
 
-        String oldEmail = account.getEmail();
         account.setEmail(newEmail);
-        repository.reindexEmail(oldEmail, account);
     }
 
     private void applyAge(Account account, UpdateAccountRequest request) {

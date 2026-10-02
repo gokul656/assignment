@@ -2,20 +2,24 @@ package com.example.demo.repository;
 
 import com.example.demo.model.Account;
 import com.example.demo.model.AccountStatus;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * Exercises the real Spring Data JPA proxy against an embedded H2 database (auto-configured by
+ * {@code @DataJpaTest}), rather than hand-rolled in-memory bookkeeping - case-insensitive email
+ * lookup/uniqueness is backed by {@code findByEmailIgnoreCase}/{@code existsByEmailIgnoreCase}
+ * derived queries, and there's no separate email index to maintain (a plain {@code save()} after
+ * changing the email is enough).
+ */
+@DataJpaTest
 class AccountRepositoryTest {
 
+    @Autowired
     private AccountRepository repository;
-
-    @BeforeEach
-    void setUp() {
-        repository = new AccountRepository();
-    }
 
     private Account account(String id, String email) {
         return Account.builder()
@@ -45,11 +49,11 @@ class AccountRepositoryTest {
     void emailLookups_areCaseInsensitiveAndHandleAbsent() {
         repository.save(account("ABC123", "Alice@Example.com"));
 
-        assertThat(repository.findByEmail("alice@example.com")).isPresent();
-        assertThat(repository.findByEmail("ALICE@EXAMPLE.COM")).isPresent();
-        assertThat(repository.findByEmail("nobody@example.com")).isEmpty();
-        assertThat(repository.existsByEmail("alice@example.com")).isTrue();
-        assertThat(repository.existsByEmail("nobody@example.com")).isFalse();
+        assertThat(repository.findByEmailIgnoreCase("alice@example.com")).isPresent();
+        assertThat(repository.findByEmailIgnoreCase("ALICE@EXAMPLE.COM")).isPresent();
+        assertThat(repository.findByEmailIgnoreCase("nobody@example.com")).isEmpty();
+        assertThat(repository.existsByEmailIgnoreCase("alice@example.com")).isTrue();
+        assertThat(repository.existsByEmailIgnoreCase("nobody@example.com")).isFalse();
     }
 
     @Test
@@ -61,32 +65,26 @@ class AccountRepositoryTest {
 
         repository.deleteById("ABC123");
         assertThat(repository.findById("ABC123")).isEmpty();
-        assertThat(repository.existsByEmail("alice@example.com")).isFalse();
+        assertThat(repository.existsByEmailIgnoreCase("alice@example.com")).isFalse();
     }
 
     @Test
-    void reindexEmail_movesEmailIndexToNewAddress() {
-        Account account = account("ABC123", "old@example.com");
-        repository.save(account);
+    void changingEmailAndSaving_updatesTheEmailLookup_noSeparateReindexNeeded() {
+        Account account = repository.save(account("ABC123", "old@example.com"));
 
         account.setEmail("new@example.com");
-        repository.reindexEmail("old@example.com", account);
+        repository.save(account);
 
-        assertThat(repository.existsByEmail("old@example.com")).isFalse();
-        assertThat(repository.findByEmail("new@example.com")).isPresent();
-        assertThat(repository.findByEmail("new@example.com").get().getAccountId()).isEqualTo("ABC123");
+        assertThat(repository.existsByEmailIgnoreCase("old@example.com")).isFalse();
+        assertThat(repository.findByEmailIgnoreCase("new@example.com")).isPresent();
+        assertThat(repository.findByEmailIgnoreCase("new@example.com").get().getAccountId()).isEqualTo("ABC123");
     }
 
     @Test
-    void findAll_returnsImmutableSnapshot() {
+    void findAll_returnsEverySavedAccount() {
         repository.save(account("ABC123", "alice@example.com"));
-        var snapshot = repository.findAll();
-
         repository.save(account("DEF456", "bob@example.com"));
 
-        assertThat(snapshot).hasSize(1);
         assertThat(repository.findAll()).hasSize(2);
-        assertThatThrownBy(() -> snapshot.add(account("GHI789", "carl@example.com")))
-                .isInstanceOf(UnsupportedOperationException.class);
     }
 }

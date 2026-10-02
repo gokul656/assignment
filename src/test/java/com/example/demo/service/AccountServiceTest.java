@@ -20,6 +20,8 @@ import com.example.demo.repository.AccountRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -32,18 +34,20 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@DataJpaTest
 @ExtendWith(MockitoExtension.class)
 class AccountServiceTest {
 
     @Mock
     private ZippopotamClient zippopotamClient;
 
+    @Autowired
     private AccountRepository repository;
+
     private AccountService accountService;
 
     @BeforeEach
     void setUp() {
-        repository = new AccountRepository();
         accountService = new AccountService(repository, zippopotamClient, new BCryptPasswordEncoder());
         lenient().when(zippopotamClient.lookup(anyString(), anyString()))
                 .thenReturn(new PostalLocation("Birmingham", "AL", -86.8, 33.5));
