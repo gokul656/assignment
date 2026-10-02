@@ -1,4 +1,4 @@
-package com.example.demo.account;
+package com.example.demo.util;
 
 import org.apache.commons.lang3.RandomStringUtils;
 

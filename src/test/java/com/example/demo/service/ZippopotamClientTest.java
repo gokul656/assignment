@@ -1,4 +1,4 @@
-package com.example.demo.zippopotam;
+package com.example.demo.service;
 
 import com.example.demo.exception.PostalLookupException;
 import org.junit.jupiter.api.BeforeEach;
@@ -90,29 +90,17 @@ class ZippopotamClientTest {
     }
 
     @Test
-    void lookup_nullResponseBody_throwsPostalLookupException() {
+    void lookup_nullOrEmptyPlaces_throwsPostalLookupException() {
         when(responseSpec.body(ZippopotamResponse.class)).thenReturn(null);
+        assertThatThrownBy(() -> zippopotamClient.lookup("US", "99999")).isInstanceOf(PostalLookupException.class);
 
-        assertThatThrownBy(() -> zippopotamClient.lookup("US", "99999"))
-                .isInstanceOf(PostalLookupException.class);
-    }
-
-    @Test
-    void lookup_emptyPlacesList_throwsPostalLookupException() {
         when(responseSpec.body(ZippopotamResponse.class))
                 .thenReturn(new ZippopotamResponse("99999", "United States", "US", List.of()));
+        assertThatThrownBy(() -> zippopotamClient.lookup("US", "99999")).isInstanceOf(PostalLookupException.class);
 
-        assertThatThrownBy(() -> zippopotamClient.lookup("US", "99999"))
-                .isInstanceOf(PostalLookupException.class);
-    }
-
-    @Test
-    void lookup_nullPlacesList_throwsPostalLookupException() {
         when(responseSpec.body(ZippopotamResponse.class))
                 .thenReturn(new ZippopotamResponse("99999", "United States", "US", null));
-
-        assertThatThrownBy(() -> zippopotamClient.lookup("US", "99999"))
-                .isInstanceOf(PostalLookupException.class);
+        assertThatThrownBy(() -> zippopotamClient.lookup("US", "99999")).isInstanceOf(PostalLookupException.class);
     }
 
     @Test
@@ -136,24 +124,17 @@ class ZippopotamClientTest {
     }
 
     @Test
-    void lookup_invalidCoordinateStrings_returnNullRatherThanThrow() {
+    void lookup_malformedOrMissingCoordinates_returnNullRatherThanThrow() {
         when(responseSpec.body(ZippopotamResponse.class))
                 .thenReturn(singlePlaceResponse("Nowhere", "ZZ", "not-a-number", ""));
+        PostalLocation malformed = zippopotamClient.lookup("US", "35203");
+        assertThat(malformed.longitude()).isNull();
+        assertThat(malformed.latitude()).isNull();
 
-        PostalLocation result = zippopotamClient.lookup("US", "35203");
-
-        assertThat(result.longitude()).isNull();
-        assertThat(result.latitude()).isNull();
-    }
-
-    @Test
-    void lookup_nullCoordinateStrings_returnNull() {
         when(responseSpec.body(ZippopotamResponse.class))
                 .thenReturn(singlePlaceResponse("Nowhere", "ZZ", null, null));
-
-        PostalLocation result = zippopotamClient.lookup("US", "35203");
-
-        assertThat(result.longitude()).isNull();
-        assertThat(result.latitude()).isNull();
+        PostalLocation missing = zippopotamClient.lookup("US", "35203");
+        assertThat(missing.longitude()).isNull();
+        assertThat(missing.latitude()).isNull();
     }
 }

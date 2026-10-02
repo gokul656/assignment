@@ -13,4 +13,9 @@ public abstract class ApiException extends RuntimeException {
     public HttpStatus getStatus() {
         return status;
     }
+
+    /** Lets subclasses expose a {@code (String template, Object... args)} constructor without each repeating the format call. */
+    protected static String format(String template, Object... args) {
+        return args.length == 0 ? template : String.format(template, args);
+    }
 }

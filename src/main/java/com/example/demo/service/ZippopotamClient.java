@@ -1,4 +1,4 @@
-package com.example.demo.zippopotam;
+package com.example.demo.service;
 
 import com.example.demo.exception.PostalLookupException;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +25,7 @@ public class ZippopotamClient {
                     .body(ZippopotamResponse.class);
 
             if (response == null || response.places() == null || response.places().isEmpty()) {
-                throw new PostalLookupException(String.format(POSTAL_LOOKUP_NOT_FOUND, countryCode, postalCode));
+                throw new PostalLookupException(POSTAL_LOOKUP_NOT_FOUND, countryCode, postalCode);
             }
 
             ZippopotamResponse.Place place = response.places().get(0);
@@ -36,10 +36,10 @@ public class ZippopotamClient {
                     parseCoordinate(place.latitude())
             );
         } catch (HttpClientErrorException.NotFound e) {
-            throw new PostalLookupException(String.format(POSTAL_LOOKUP_NOT_FOUND, countryCode, postalCode));
+            throw new PostalLookupException(POSTAL_LOOKUP_NOT_FOUND, countryCode, postalCode);
         } catch (RestClientException e) {
             log.warn("Zippopotam lookup failed for {}/{}: {}", countryCode, postalCode, e.getMessage());
-            throw new PostalLookupException(String.format(POSTAL_LOOKUP_UNAVAILABLE, e.getMessage()));
+            throw new PostalLookupException(POSTAL_LOOKUP_UNAVAILABLE, e.getMessage());
         }
     }
 

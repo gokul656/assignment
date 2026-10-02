@@ -1,5 +1,7 @@
-package com.example.demo.account;
+package com.example.demo.repository;
 
+import com.example.demo.domain.Account;
+import com.example.demo.domain.AccountStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -28,28 +30,20 @@ class AccountRepositoryTest {
     }
 
     @Test
-    void save_thenFindById_returnsAccount() {
+    void save_thenFindById_handlesPresentAndAbsent() {
         repository.save(account("ABC123", "alice@example.com"));
 
         assertThat(repository.findById("ABC123")).isPresent();
         assertThat(repository.findById("ABC123").get().getEmail()).isEqualTo("alice@example.com");
-    }
-
-    @Test
-    void findById_unknownId_returnsEmpty() {
         assertThat(repository.findById("NOPE00")).isEmpty();
     }
 
     @Test
-    void findByEmail_isCaseInsensitive() {
+    void findByEmail_isCaseInsensitiveAndHandlesAbsent() {
         repository.save(account("ABC123", "Alice@Example.com"));
 
         assertThat(repository.findByEmail("alice@example.com")).isPresent();
         assertThat(repository.findByEmail("ALICE@EXAMPLE.COM")).isPresent();
-    }
-
-    @Test
-    void findByEmail_unknownEmail_returnsEmpty() {
         assertThat(repository.findByEmail("nobody@example.com")).isEmpty();
     }
 
@@ -69,22 +63,15 @@ class AccountRepositoryTest {
     }
 
     @Test
-    void deleteById_removesAccountAndEmailIndex() {
-        repository.save(account("ABC123", "alice@example.com"));
-
-        repository.deleteById("ABC123");
-
-        assertThat(repository.findById("ABC123")).isEmpty();
-        assertThat(repository.existsByEmail("alice@example.com")).isFalse();
-    }
-
-    @Test
-    void deleteById_unknownId_isNoOp() {
+    void deleteById_removesAccountAndIsNoOpForUnknownId() {
         repository.save(account("ABC123", "alice@example.com"));
 
         repository.deleteById("ZZZZZZ");
-
         assertThat(repository.findById("ABC123")).isPresent();
+
+        repository.deleteById("ABC123");
+        assertThat(repository.findById("ABC123")).isEmpty();
+        assertThat(repository.existsByEmail("alice@example.com")).isFalse();
     }
 
     @Test
@@ -101,7 +88,7 @@ class AccountRepositoryTest {
     }
 
     @Test
-    void findAll_returnsSnapshotNotLiveView() {
+    void findAll_returnsImmutableSnapshot() {
         repository.save(account("ABC123", "alice@example.com"));
         var snapshot = repository.findAll();
 
@@ -109,13 +96,7 @@ class AccountRepositoryTest {
 
         assertThat(snapshot).hasSize(1);
         assertThat(repository.findAll()).hasSize(2);
-    }
-
-    @Test
-    void findAll_isImmutable() {
-        repository.save(account("ABC123", "alice@example.com"));
-
-        assertThatThrownBy(() -> repository.findAll().add(account("DEF456", "bob@example.com")))
+        assertThatThrownBy(() -> snapshot.add(account("GHI789", "carl@example.com")))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 }

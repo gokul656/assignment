@@ -1,22 +1,17 @@
-package com.example.demo.account;
+package com.example.demo.config;
 
-import com.example.demo.account.model.AccountStatusValue;
-import com.example.demo.account.model.ChangeStatusRequest;
-import com.example.demo.account.model.CountryCode;
-import com.example.demo.account.model.CreateAccountRequest;
-import com.example.demo.account.model.CreateAccountResponse;
+import com.example.demo.dto.AccountStatusValue;
+import com.example.demo.dto.ChangeStatusRequest;
+import com.example.demo.dto.CountryCode;
+import com.example.demo.dto.CreateAccountRequest;
+import com.example.demo.dto.CreateAccountResponse;
+import com.example.demo.service.AccountService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
-/**
- * Seeds a handful of demo accounts on startup so the API has data to show off immediately
- * (GET by id/email, counts grouping, update, status change, delete). Each creation hits the
- * real zippopotam.us API, so failures here (e.g. no network) are logged and skipped rather
- * than blocking application startup.
- */
 @Slf4j
 @Component
 @Profile("!test")

@@ -1,22 +1,25 @@
-package com.example.demo.account;
+package com.example.demo.service;
 
-import com.example.demo.account.model.AccountResponse;
-import com.example.demo.account.model.AccountStatusValue;
-import com.example.demo.account.model.ChangeStatusRequest;
-import com.example.demo.account.model.CountryCode;
-import com.example.demo.account.model.CountryCountResponse;
-import com.example.demo.account.model.CreateAccountRequest;
-import com.example.demo.account.model.CreateAccountResponse;
-import com.example.demo.account.model.LocationResponse;
-import com.example.demo.account.model.PlaceCountResponse;
-import com.example.demo.account.model.StateCountResponse;
-import com.example.demo.account.model.UpdateAccountRequest;
+import com.example.demo.domain.Account;
+import com.example.demo.domain.AccountStatus;
+import com.example.demo.domain.Location;
+import com.example.demo.dto.AccountResponse;
+import com.example.demo.dto.AccountStatusValue;
+import com.example.demo.dto.ChangeStatusRequest;
+import com.example.demo.dto.CountryCode;
+import com.example.demo.dto.CountryCountResponse;
+import com.example.demo.dto.CreateAccountRequest;
+import com.example.demo.dto.CreateAccountResponse;
+import com.example.demo.dto.LocationResponse;
+import com.example.demo.dto.PlaceCountResponse;
+import com.example.demo.dto.StateCountResponse;
+import com.example.demo.dto.UpdateAccountRequest;
 import com.example.demo.exception.AccountNotFoundException;
 import com.example.demo.exception.ConflictException;
 import com.example.demo.exception.InvalidSecurityPinException;
 import com.example.demo.exception.ValidationException;
-import com.example.demo.zippopotam.PostalLocation;
-import com.example.demo.zippopotam.ZippopotamClient;
+import com.example.demo.repository.AccountRepository;
+import com.example.demo.util.IdGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -37,7 +40,7 @@ public class AccountService {
     public CreateAccountResponse createAccount(CreateAccountRequest request) {
         String email = request.getEmail();
         if (repository.existsByEmail(email)) {
-            throw new ConflictException(String.format(EMAIL_ALREADY_EXISTS, email));
+            throw new ConflictException(EMAIL_ALREADY_EXISTS, email);
         }
         String country = request.getCountry().name();
         String postalCode = request.getPostalCode();
@@ -67,7 +70,7 @@ public class AccountService {
                 .location(location)
                 .build();
 
-        repository.save(account);
+        account = repository.save(account);
         return new CreateAccountResponse()
                 .accountId(accountId)
                 .status(toStatusValue(account.getStatus()))
@@ -77,7 +80,7 @@ public class AccountService {
     public AccountResponse updateAccount(String accountId, UpdateAccountRequest request) {
         Account account = findOrThrow(accountId);
         if (account.getStatus() != AccountStatus.ACTIVE) {
-            throw new ConflictException(String.format(ONLY_ACTIVE_ACCOUNTS_CAN_BE_UPDATED, account.getStatus()));
+            throw new ConflictException(ONLY_ACTIVE_ACCOUNTS_CAN_BE_UPDATED, account.getStatus());
         }
 
         if (request.getName() != null) {
@@ -86,7 +89,7 @@ public class AccountService {
         if (request.getEmail() != null) {
             String newEmail = request.getEmail();
             if (!newEmail.equalsIgnoreCase(account.getEmail()) && repository.existsByEmail(newEmail)) {
-                throw new ConflictException(String.format(EMAIL_ALREADY_EXISTS, newEmail));
+                throw new ConflictException(EMAIL_ALREADY_EXISTS, newEmail);
             }
             String oldEmail = account.getEmail();
             account.setEmail(newEmail);
@@ -128,10 +131,10 @@ public class AccountService {
     public void deleteAccount(String accountId, String securityPin) {
         Account account = findOrThrow(accountId);
         if (account.getStatus() != AccountStatus.INACTIVE) {
-            throw new ConflictException(String.format(ONLY_INACTIVE_ACCOUNTS_CAN_BE_DELETED, account.getStatus()));
+            throw new ConflictException(ONLY_INACTIVE_ACCOUNTS_CAN_BE_DELETED, account.getStatus());
         }
         if (securityPin == null || !securityPin.equals(account.getSecurityPin())) {
-            throw new InvalidSecurityPinException(String.format(INVALID_SECURITY_PIN, accountId));
+            throw new InvalidSecurityPinException(INVALID_SECURITY_PIN, accountId);
         }
         repository.deleteById(accountId);
     }
@@ -145,7 +148,7 @@ public class AccountService {
             account = findOrThrow(accountId);
         } else {
             account = repository.findByEmail(email)
-                    .orElseThrow(() -> new AccountNotFoundException(String.format(ACCOUNT_NOT_FOUND_BY_EMAIL, email)));
+                    .orElseThrow(() -> new AccountNotFoundException(ACCOUNT_NOT_FOUND_BY_EMAIL, email));
         }
         return toAccountResponse(account);
     }
@@ -201,7 +204,7 @@ public class AccountService {
 
     private Account findOrThrow(String accountId) {
         return repository.findById(accountId)
-                .orElseThrow(() -> new AccountNotFoundException(String.format(ACCOUNT_NOT_FOUND_BY_ID, accountId)));
+                .orElseThrow(() -> new AccountNotFoundException(ACCOUNT_NOT_FOUND_BY_ID, accountId));
     }
 
     private String generateUniqueAccountId() {

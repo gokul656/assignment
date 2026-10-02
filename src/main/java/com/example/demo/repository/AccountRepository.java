@@ -1,5 +1,6 @@
-package com.example.demo.account;
+package com.example.demo.repository;
 
+import com.example.demo.domain.Account;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
@@ -7,7 +8,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Simple in-memory store (per the assignment: "use of an in-memory database is fine"). */
 @Repository
 public class AccountRepository {
 
@@ -52,7 +52,6 @@ public class AccountRepository {
         return accountsById.keySet();
     }
 
-    /** Call when an account's email changes so the uniqueness index stays correct. */
     public void reindexEmail(String oldEmail, Account account) {
         accountIdByEmail.remove(normalizeEmail(oldEmail));
         accountIdByEmail.put(normalizeEmail(account.getEmail()), account.getAccountId());

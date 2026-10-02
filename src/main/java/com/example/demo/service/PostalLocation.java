@@ -1,4 +1,4 @@
-package com.example.demo.zippopotam;
+package com.example.demo.service;
 
 public record PostalLocation(
         String place,

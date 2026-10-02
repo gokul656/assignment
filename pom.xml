@@ -104,8 +104,8 @@
 						<configuration>
 							<inputSpec>${project.basedir}/src/main/resources/openapi.yaml</inputSpec>
 							<generatorName>spring</generatorName>
-							<apiPackage>com.example.demo.account.api</apiPackage>
-							<modelPackage>com.example.demo.account.model</modelPackage>
+							<apiPackage>com.example.demo.controller</apiPackage>
+							<modelPackage>com.example.demo.dto</modelPackage>
 							<configOptions>
 								<interfaceOnly>true</interfaceOnly>
 								<useSpringBoot3>true</useSpringBoot3>

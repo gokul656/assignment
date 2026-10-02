@@ -1,14 +1,15 @@
-package com.example.demo.account;
+package com.example.demo.controller;
 
-import com.example.demo.account.model.AccountResponse;
-import com.example.demo.account.model.AccountStatusValue;
-import com.example.demo.account.model.ChangeStatusRequest;
-import com.example.demo.account.model.CountryCode;
-import com.example.demo.account.model.CreateAccountRequest;
-import com.example.demo.account.model.CreateAccountResponse;
-import com.example.demo.account.model.LocationResponse;
+import com.example.demo.dto.AccountResponse;
+import com.example.demo.dto.AccountStatusValue;
+import com.example.demo.dto.ChangeStatusRequest;
+import com.example.demo.dto.CountryCode;
+import com.example.demo.dto.CreateAccountRequest;
+import com.example.demo.dto.CreateAccountResponse;
+import com.example.demo.dto.LocationResponse;
 import com.example.demo.exception.AccountNotFoundException;
 import com.example.demo.exception.ConflictException;
+import com.example.demo.service.AccountService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -60,35 +61,22 @@ class AccountControllerTest {
     }
 
     @Test
-    void createAccount_blankName_returns400() throws Exception {
+    void createAccount_multipleBeanValidationViolations_returns400WithAllFieldErrors() throws Exception {
+        // name non-alphanumeric, email malformed, postal code wrong length, age out of range - all in one request.
         mockMvc.perform(post("/api/accounts")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(validCreateRequest().name(""))))
+                        .content(objectMapper.writeValueAsString(validCreateRequest()
+                                .name("Al ice!").email("not-an-email").postalCode("123").age(200))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fieldErrors.name").exists());
+                .andExpect(jsonPath("$.fieldErrors.name").exists())
+                .andExpect(jsonPath("$.fieldErrors.email").exists())
+                .andExpect(jsonPath("$.fieldErrors.postalCode").exists())
+                .andExpect(jsonPath("$.fieldErrors.age").exists());
     }
 
     @Test
-    void createAccount_nonAlphanumericName_returns400() throws Exception {
-        mockMvc.perform(post("/api/accounts")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(validCreateRequest().name("Al ice!"))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fieldErrors.name").exists());
-    }
-
-    @Test
-    void createAccount_invalidEmail_returns400() throws Exception {
-        mockMvc.perform(post("/api/accounts")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(validCreateRequest().email("not-an-email"))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fieldErrors.email").exists());
-    }
-
-    @Test
-    void createAccount_invalidCountry_returns400() throws Exception {
-        // "CA" isn't a CountryCode enum constant, so this has to be raw JSON rather than a typed request object.
+    void createAccount_invalidCountry_returns400WithFieldError() throws Exception {
+        // "CA" isn't a CountryCode constant, so this has to be raw JSON rather than a typed request object.
         mockMvc.perform(post("/api/accounts")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Alice\",\"email\":\"alice@example.com\",\"country\":\"CA\",\"postalCode\":\"35203\",\"age\":30}"))
@@ -97,26 +85,8 @@ class AccountControllerTest {
     }
 
     @Test
-    void createAccount_invalidPostalCode_returns400() throws Exception {
-        mockMvc.perform(post("/api/accounts")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(validCreateRequest().postalCode("123"))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fieldErrors.postalCode").exists());
-    }
-
-    @Test
-    void createAccount_ageOutOfRange_returns400() throws Exception {
-        mockMvc.perform(post("/api/accounts")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(validCreateRequest().age(200))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fieldErrors.age").exists());
-    }
-
-    @Test
-    void createAccount_nonRequestedStatus_returns400() throws Exception {
-        // "ACTIVE" isn't a valid CreateStatusValue (only "Requested" is), so this is raw JSON too.
+    void createAccount_nonRequestedStatus_returns400WithFieldError() throws Exception {
+        // "ACTIVE" isn't a valid create-time status (only "Requested" is), so this is raw JSON too.
         mockMvc.perform(post("/api/accounts")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Alice\",\"email\":\"alice@example.com\",\"country\":\"US\",\"postalCode\":\"35203\",\"age\":30,\"status\":\"ACTIVE\"}"))

@@ -33,35 +33,19 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void handleApiException_mapsStatusAndMessage_withEmptyFieldErrorsForNonValidation() {
-        AccountNotFoundException ex = new AccountNotFoundException("no account");
+    void handleApiException_mapsEachSubtypeToItsDeclaredStatus() {
+        assertThat(handler.handleApiException(new AccountNotFoundException("no account")).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(handler.handleApiException(new ConflictException("dup")).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+        assertThat(handler.handleApiException(new InvalidSecurityPinException("bad pin")).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(handler.handleApiException(new PostalLookupException("upstream down")).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_GATEWAY);
 
-        ResponseEntity<ErrorResponse> response = handler.handleApiException(ex);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(response.getBody().message()).isEqualTo("no account");
-        assertThat(response.getBody().fieldErrors()).isEmpty();
-    }
-
-    @Test
-    void handleApiException_conflictException_mapsTo409() {
-        ResponseEntity<ErrorResponse> response = handler.handleApiException(new ConflictException("dup"));
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-    }
-
-    @Test
-    void handleApiException_invalidSecurityPin_mapsTo403() {
-        ResponseEntity<ErrorResponse> response = handler.handleApiException(new InvalidSecurityPinException("bad pin"));
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-    }
-
-    @Test
-    void handleApiException_postalLookupException_mapsTo502() {
-        ResponseEntity<ErrorResponse> response = handler.handleApiException(new PostalLookupException("upstream down"));
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        ResponseEntity<ErrorResponse> nonValidation = handler.handleApiException(new AccountNotFoundException("no account"));
+        assertThat(nonValidation.getBody().message()).isEqualTo("no account");
+        assertThat(nonValidation.getBody().fieldErrors()).isEmpty();
     }
 
     @Test
@@ -152,24 +136,17 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void handleBadRequest_missingServletParameter_returns400WithRawMessage() {
-        MissingServletRequestParameterException ex = new MissingServletRequestParameterException("securityPin", "String");
+    void handleBadRequest_returns400ForMissingParamAndTypeMismatch() throws NoSuchMethodException {
+        MissingServletRequestParameterException missingParam = new MissingServletRequestParameterException("securityPin", "String");
+        ResponseEntity<ErrorResponse> missingParamResponse = handler.handleBadRequest(missingParam);
+        assertThat(missingParamResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(missingParamResponse.getBody().message()).contains("securityPin");
+        assertThat(missingParamResponse.getBody().fieldErrors()).isEmpty();
 
-        ResponseEntity<ErrorResponse> response = handler.handleBadRequest(ex);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(response.getBody().message()).contains("securityPin");
-        assertThat(response.getBody().fieldErrors()).isEmpty();
-    }
-
-    @Test
-    void handleBadRequest_methodArgumentTypeMismatch_returns400() throws NoSuchMethodException {
-        MethodArgumentTypeMismatchException ex = new MethodArgumentTypeMismatchException(
+        MethodArgumentTypeMismatchException typeMismatch = new MethodArgumentTypeMismatchException(
                 "CA", String.class, "country", dummyMethodParameter(), new IllegalArgumentException("bad enum"));
-
-        ResponseEntity<ErrorResponse> response = handler.handleBadRequest(ex);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        ResponseEntity<ErrorResponse> typeMismatchResponse = handler.handleBadRequest(typeMismatch);
+        assertThat(typeMismatchResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test

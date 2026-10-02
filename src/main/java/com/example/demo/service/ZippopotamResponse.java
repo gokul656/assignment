@@ -1,4 +1,4 @@
-package com.example.demo.zippopotam;
+package com.example.demo.service;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;

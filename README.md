@@ -20,7 +20,7 @@ has data to exercise immediately — account ids/PINs are printed in the startup
 ./mvnw test
 ```
 
-84 unit tests across:
+62 unit tests across:
 - `AccountServiceTest` — all business rules (create/update/delete/status/counts), including email
   conflict/case-insensitivity, location-refresh-only-when-needed (verified via Mockito
   `verify(times(1))` on the zippopotam client), not-found paths, and the `UNKNOWN` fallback when an
@@ -43,15 +43,30 @@ the API contract (bonus task b). It's wired into the Maven build via
 `openapi-generator-maven-plugin` (`generate-sources` phase), which generates, into
 `target/generated-sources/openapi` (not checked in):
 
-- `com.example.demo.account.api.AccountsApi` — a Spring MVC interface with all `@RequestMapping`/
+- `com.example.demo.controller.AccountsApi` — a Spring MVC interface with all `@RequestMapping`/
   `@Valid` annotations derived from the spec. `AccountController` implements this interface
   directly — there is no hand-written `@PostMapping`/`@GetMapping` left in the controller.
-- `com.example.demo.account.model.*` — request/response model classes (`CreateAccountRequest`,
+- `com.example.demo.dto.*` — request/response model classes (`CreateAccountRequest`,
   `AccountResponse`, `CountryCode`, `AccountStatusValue`, etc.), including Jakarta Bean Validation
   annotations derived from the spec's `pattern`/`minimum`/`maximum`/`required` constraints.
 
 Regenerate with `./mvnw generate-sources` after editing `openapi.yaml` — IDEs should pick up
 `target/generated-sources/openapi` as a source root automatically (the plugin registers it).
+
+## Package layout
+
+Organized by technical layer rather than by feature:
+
+- `controller` — `AccountController` (implements the generated `AccountsApi`)
+- `service` — `AccountService` (business rules), `ZippopotamClient` + its supporting records
+  (`ZippopotamResponse`, `PostalLocation`)
+- `repository` — `AccountRepository` (in-memory store)
+- `domain` — `Account`, `AccountStatus`, `Location` (internal persisted model, distinct from the
+  generated `dto` request/response classes)
+- `dto` — generated request/response models (see above)
+- `util` — `IdGenerator`
+- `config` — `RestClientConfig`, `DemoDataSeeder`
+- `exception` — `ApiException` hierarchy, `Constants`, `GlobalExceptionHandler`
 
 ## API
 

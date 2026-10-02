@@ -1,13 +1,13 @@
-package com.example.demo.account;
+package com.example.demo.controller;
 
-import com.example.demo.account.api.AccountsApi;
-import com.example.demo.account.model.AccountResponse;
-import com.example.demo.account.model.ChangeStatusRequest;
-import com.example.demo.account.model.CountryCode;
-import com.example.demo.account.model.CountryCountResponse;
-import com.example.demo.account.model.CreateAccountRequest;
-import com.example.demo.account.model.CreateAccountResponse;
-import com.example.demo.account.model.UpdateAccountRequest;
+import com.example.demo.dto.AccountResponse;
+import com.example.demo.dto.ChangeStatusRequest;
+import com.example.demo.dto.CountryCode;
+import com.example.demo.dto.CountryCountResponse;
+import com.example.demo.dto.CreateAccountRequest;
+import com.example.demo.dto.CreateAccountResponse;
+import com.example.demo.dto.UpdateAccountRequest;
+import com.example.demo.service.AccountService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
