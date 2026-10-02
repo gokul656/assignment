@@ -21,8 +21,7 @@ What's included:
 - Two branches showing alternate security designs for comparison:
     - feature/pin-verification-token-flow — verify-once + short-lived token exchange
     - feature/aspect-pin — simpler AOP-based PIN-in-body validation
-- README with setup instructions, API examples, a sequence diagram for the PIN flow, and documented assumptions
-
+- README with setup instructions, API examples, a sequence diagram for the PIN flow, and documented assumptions made while clarifying ambiguous requirements (see the Assumptions section in the README)
 Please review and let me know your feedback or any questions.
 
 Thanks,
