@@ -1,6 +1,6 @@
 package com.example.demo.repository;
 
-import com.example.demo.domain.Account;
+import com.example.demo.model.Account;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;

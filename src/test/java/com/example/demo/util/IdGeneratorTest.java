@@ -9,11 +9,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 class IdGeneratorTest {
 
     @Test
-    void randomAccountId_isSixCharsAlphanumericUppercase() {
-        String id = IdGenerator.randomAccountId();
+    void randomAccountId_isSixCharsAlphanumericUppercase_andSecurityPinIsFourDigitsZeroPadded() {
+        assertThat(IdGenerator.randomAccountId()).matches("^[A-Z0-9]{6}$");
 
-        assertThat(id).hasSize(6);
-        assertThat(id).matches("^[A-Z0-9]{6}$");
+        var pins = IntStream.range(0, 200).mapToObj(i -> IdGenerator.randomSecurityPin()).toList();
+        assertThat(pins).allMatch(pin -> pin.matches("^\\d{4}$"));
     }
 
     @Test
@@ -21,12 +21,5 @@ class IdGeneratorTest {
         var ids = IntStream.range(0, 50).mapToObj(i -> IdGenerator.randomAccountId()).distinct().toList();
 
         assertThat(ids).hasSizeGreaterThan(1);
-    }
-
-    @Test
-    void randomSecurityPin_isFourDigitsZeroPadded() {
-        var pins = IntStream.range(0, 200).mapToObj(i -> IdGenerator.randomSecurityPin()).toList();
-
-        assertThat(pins).allMatch(pin -> pin.matches("^\\d{4}$"));
     }
 }

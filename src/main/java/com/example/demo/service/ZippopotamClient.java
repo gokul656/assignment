@@ -1,6 +1,8 @@
 package com.example.demo.service;
 
 import com.example.demo.exception.PostalLookupException;
+import com.example.demo.model.PostalLocation;
+import com.example.demo.model.ZippopotamResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -38,8 +40,8 @@ public class ZippopotamClient {
         } catch (HttpClientErrorException.NotFound e) {
             throw new PostalLookupException(POSTAL_LOOKUP_NOT_FOUND, countryCode, postalCode);
         } catch (RestClientException e) {
-            log.warn("Zippopotam lookup failed for {}/{}: {}", countryCode, postalCode, e.getMessage());
-            throw new PostalLookupException(POSTAL_LOOKUP_UNAVAILABLE, e.getMessage());
+            log.warn("Zippopotam lookup failed for {}/{}", countryCode, postalCode, e);
+            throw new PostalLookupException(POSTAL_LOOKUP_UNAVAILABLE);
         }
     }
 

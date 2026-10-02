@@ -1,6 +1,9 @@
 package com.example.demo.exception;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mockito;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpStatus;
@@ -15,6 +18,7 @@ import tools.jackson.core.JacksonException;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
@@ -32,40 +36,37 @@ class GlobalExceptionHandlerTest {
     private void dummyTarget(String arg) {
     }
 
-    @Test
-    void handleApiException_mapsEachSubtypeToItsDeclaredStatus() {
-        assertThat(handler.handleApiException(new AccountNotFoundException("no account")).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(handler.handleApiException(new ConflictException("dup")).getStatusCode())
-                .isEqualTo(HttpStatus.CONFLICT);
-        assertThat(handler.handleApiException(new InvalidSecurityPinException("bad pin")).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN);
-        assertThat(handler.handleApiException(new PostalLookupException("upstream down")).getStatusCode())
-                .isEqualTo(HttpStatus.BAD_GATEWAY);
+    private static Stream<Arguments> apiExceptionsWithExpectedStatus() {
+        return Stream.of(
+                Arguments.of(new AccountNotFoundException("no account"), HttpStatus.NOT_FOUND),
+                Arguments.of(new ConflictException("dup"), HttpStatus.CONFLICT),
+                Arguments.of(new InvalidSecurityPinException("bad pin"), HttpStatus.FORBIDDEN),
+                Arguments.of(new PostalLookupException("upstream down"), HttpStatus.BAD_GATEWAY)
+        );
+    }
 
+    @ParameterizedTest(name = "{0} maps to {1}")
+    @MethodSource("apiExceptionsWithExpectedStatus")
+    void handleApiException_mapsEachSubtypeToItsDeclaredStatus(ApiException ex, HttpStatus expectedStatus) {
+        assertThat(handler.handleApiException(ex).getStatusCode()).isEqualTo(expectedStatus);
+    }
+
+    @Test
+    void handleApiException_nonValidationException_passesMessageThroughWithNoFieldErrors() {
         ResponseEntity<ErrorResponse> nonValidation = handler.handleApiException(new AccountNotFoundException("no account"));
         assertThat(nonValidation.getBody().message()).isEqualTo("no account");
         assertThat(nonValidation.getBody().fieldErrors()).isEmpty();
     }
 
     @Test
-    void handleApiException_validationExceptionWithField_includesFieldError() {
-        ValidationException ex = new ValidationException("country", "must be US/DE/ES/FR");
+    void handleApiException_validationException_withAndWithoutField() {
+        ResponseEntity<ErrorResponse> withField = handler.handleApiException(new ValidationException("country", "must be US/DE/ES/FR"));
+        assertThat(withField.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(withField.getBody().fieldErrors()).containsEntry("country", "must be US/DE/ES/FR");
 
-        ResponseEntity<ErrorResponse> response = handler.handleApiException(ex);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(response.getBody().fieldErrors()).containsEntry("country", "must be US/DE/ES/FR");
-    }
-
-    @Test
-    void handleApiException_validationExceptionWithoutField_hasNoFieldErrors() {
-        ValidationException ex = new ValidationException("either accountId or email required");
-
-        ResponseEntity<ErrorResponse> response = handler.handleApiException(ex);
-
-        assertThat(response.getBody().fieldErrors()).isEmpty();
-        assertThat(response.getBody().message()).isEqualTo("either accountId or email required");
+        ResponseEntity<ErrorResponse> withoutField = handler.handleApiException(new ValidationException("either accountId or email required"));
+        assertThat(withoutField.getBody().fieldErrors()).isEmpty();
+        assertThat(withoutField.getBody().message()).isEqualTo("either accountId or email required");
     }
 
     @Test
@@ -99,54 +100,66 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().fieldErrors().get("country")).contains("Unexpected value 'CA'");
     }
 
-    @Test
-    void handleUnreadableBody_jacksonCauseWithoutPropertyName_fallsBackToRawMessage() {
+    private static Stream<Arguments> jacksonPathsWithNoUsableFieldName() {
+        return Stream.of(
+                Arguments.of("non-empty path but no property name", List.of(new JacksonException.Reference(new Object(), 0))),
+                Arguments.of("empty path", List.of())
+        );
+    }
+
+    @ParameterizedTest(name = "{0} falls back to the generic message")
+    @MethodSource("jacksonPathsWithNoUsableFieldName")
+    void handleUnreadableBody_noUsableFieldName_fallsBackToGenericMessage(String label, List<JacksonException.Reference> path) {
         JacksonException jacksonException = Mockito.mock(JacksonException.class);
-        JacksonException.Reference reference = new JacksonException.Reference(new Object(), 0);
-        when(jacksonException.getPath()).thenReturn(List.of(reference));
+        when(jacksonException.getPath()).thenReturn(path);
         HttpMessageNotReadableException ex = new HttpMessageNotReadableException("outer message", jacksonException, null);
 
         ResponseEntity<ErrorResponse> response = handler.handleUnreadableBody(ex);
 
         assertThat(response.getBody().fieldErrors()).isEmpty();
-        assertThat(response.getBody().message()).isEqualTo("outer message");
+        assertThat(response.getBody().message()).isEqualTo(Constants.MALFORMED_REQUEST_BODY);
     }
 
     @Test
-    void handleUnreadableBody_jacksonCauseWithEmptyPath_fallsBackToRawMessage() {
-        JacksonException jacksonException = Mockito.mock(JacksonException.class);
-        when(jacksonException.getPath()).thenReturn(List.of());
-        HttpMessageNotReadableException ex = new HttpMessageNotReadableException("outer message", jacksonException, null);
-
-        ResponseEntity<ErrorResponse> response = handler.handleUnreadableBody(ex);
-
-        assertThat(response.getBody().fieldErrors()).isEmpty();
-        assertThat(response.getBody().message()).isEqualTo("outer message");
-    }
-
-    @Test
-    void handleUnreadableBody_withoutJacksonCause_fallsBackToRawMessage() {
-        HttpMessageNotReadableException ex = new HttpMessageNotReadableException("malformed json", new RuntimeException("boom"), null);
+    void handleUnreadableBody_withoutJacksonCause_fallsBackToGenericMessage_doesNotLeakInternalDetails() {
+        HttpMessageNotReadableException ex = new HttpMessageNotReadableException(
+                "JSON parse error at [Source: ...]; nested exception is tools.jackson.core.JsonParseException: boom",
+                new RuntimeException("boom"), null);
 
         ResponseEntity<ErrorResponse> response = handler.handleUnreadableBody(ex);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody().fieldErrors()).isEmpty();
-        assertThat(response.getBody().message()).isEqualTo("malformed json");
+        assertThat(response.getBody().message()).isEqualTo(Constants.MALFORMED_REQUEST_BODY);
+        assertThat(response.getBody().message()).doesNotContain("JsonParseException", "[Source");
     }
 
     @Test
-    void handleBadRequest_returns400ForMissingParamAndTypeMismatch() throws NoSuchMethodException {
-        MissingServletRequestParameterException missingParam = new MissingServletRequestParameterException("securityPin", "String");
-        ResponseEntity<ErrorResponse> missingParamResponse = handler.handleBadRequest(missingParam);
-        assertThat(missingParamResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(missingParamResponse.getBody().message()).contains("securityPin");
-        assertThat(missingParamResponse.getBody().fieldErrors()).isEmpty();
+    void handleMissingParam_returns400_messageMentionsTheParameterName() {
+        MissingServletRequestParameterException ex = new MissingServletRequestParameterException("securityPin", "String");
 
-        MethodArgumentTypeMismatchException typeMismatch = new MethodArgumentTypeMismatchException(
-                "CA", String.class, "country", dummyMethodParameter(), new IllegalArgumentException("bad enum"));
-        ResponseEntity<ErrorResponse> typeMismatchResponse = handler.handleBadRequest(typeMismatch);
-        assertThat(typeMismatchResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        ResponseEntity<ErrorResponse> response = handler.handleMissingParam(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().message()).contains("securityPin");
+        assertThat(response.getBody().fieldErrors()).isEmpty();
+    }
+
+    @Test
+    void handleTypeMismatch_returns400_withFieldErrorButNoInternalTypeName() throws NoSuchMethodException {
+        MethodArgumentTypeMismatchException ex = new MethodArgumentTypeMismatchException(
+                "ZZ", CountryCodeStub.class, "country", dummyMethodParameter(), new IllegalArgumentException("bad enum"));
+
+        ResponseEntity<ErrorResponse> response = handler.handleTypeMismatch(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().fieldErrors()).containsKey("country");
+        assertThat(response.getBody().fieldErrors().get("country")).contains("ZZ");
+        assertThat(response.getBody().fieldErrors().get("country")).doesNotContain("CountryCodeStub", "com.example");
+    }
+
+    /** Stand-in for a generated DTO enum type, just to give the type-mismatch exception something to name internally. */
+    private static final class CountryCodeStub {
     }
 
     @Test

@@ -49,7 +49,8 @@ public class DemoDataSeeder implements CommandLineRunner {
         try {
             CreateAccountResponse created = accountService.createAccount(
                     new CreateAccountRequest().name("Ivy").email(email).country(country).postalCode(postalCode).age(age));
-            accountService.changeStatus(created.getAccountId(), new ChangeStatusRequest().status(AccountStatusValue.INACTIVE));
+            accountService.changeStatus(created.getAccountId(),
+                    new ChangeStatusRequest().status(AccountStatusValue.INACTIVE).securityPin(created.getSecurityPin()));
             log.info("Seeded inactive account Ivy ({}) -> id={}, pin={} (ready for DELETE demo)",
                     email, created.getAccountId(), created.getSecurityPin());
         } catch (Exception e) {

@@ -1,7 +1,7 @@
 package com.example.demo.service;
 
-import com.example.demo.domain.Account;
-import com.example.demo.domain.AccountStatus;
+import com.example.demo.model.Account;
+import com.example.demo.model.AccountStatus;
 import com.example.demo.dto.AccountResponse;
 import com.example.demo.dto.AccountStatusValue;
 import com.example.demo.dto.ChangeStatusRequest;
@@ -9,10 +9,12 @@ import com.example.demo.dto.CountryCode;
 import com.example.demo.dto.CountryCountResponse;
 import com.example.demo.dto.CreateAccountRequest;
 import com.example.demo.dto.CreateAccountResponse;
+import com.example.demo.dto.DeleteAccountRequest;
 import com.example.demo.dto.UpdateAccountRequest;
 import com.example.demo.exception.AccountNotFoundException;
 import com.example.demo.exception.ConflictException;
 import com.example.demo.exception.ValidationException;
+import com.example.demo.model.PostalLocation;
 import com.example.demo.repository.AccountRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -68,23 +70,15 @@ class AccountServiceTest {
     }
 
     @Test
-    void getAccount_byAccountId_returnsLocation() {
+    void getAccount_byAccountIdOrByEmail_returnsTheSameAccount() {
         CreateAccountResponse created = accountService.createAccount(validRequest("loc@example.com"));
 
-        AccountResponse response = accountService.getAccount(created.getAccountId(), null);
+        AccountResponse byId = accountService.getAccount(created.getAccountId(), null);
+        AccountResponse byEmail = accountService.getAccount(null, "loc@example.com");
 
-        assertThat(response.getEmail()).isEqualTo("loc@example.com");
-        assertThat(response.getLocation().getPlace()).isEqualTo("Birmingham");
-        assertThat(response.getLocation().getState()).isEqualTo("AL");
-    }
-
-    @Test
-    void getAccount_byEmail_returnsSameAccount() {
-        CreateAccountResponse created = accountService.createAccount(validRequest("byemail@example.com"));
-
-        AccountResponse response = accountService.getAccount(null, "byemail@example.com");
-
-        assertThat(response.getAccountId()).isEqualTo(created.getAccountId());
+        assertThat(byId.getLocation().getPlace()).isEqualTo("Birmingham");
+        assertThat(byId.getLocation().getState()).isEqualTo("AL");
+        assertThat(byEmail.getAccountId()).isEqualTo(created.getAccountId());
     }
 
     @Test
@@ -174,41 +168,31 @@ class AccountServiceTest {
     }
 
     @Test
-    void updateAccount_changingEmailToSameValueCaseInsensitive_doesNotThrow() {
-        CreateAccountResponse created = accountService.createAccount(validRequest("same@example.com"));
-
-        UpdateAccountRequest update = new UpdateAccountRequest().email("SAME@example.com");
-        AccountResponse response = accountService.updateAccount(created.getAccountId(), update);
-
-        assertThat(response.getEmail()).isEqualTo("SAME@example.com");
-        assertThat(accountService.getAccount(null, "same@example.com").getAccountId()).isEqualTo(created.getAccountId());
-    }
-
-    @Test
-    void updateAccount_emailChange_reindexesOldEmailAway() {
+    void updateAccount_emailChange_reindexesOldEmailAway_butCaseOnlyChangeIsANoOpReindex() {
         CreateAccountResponse created = accountService.createAccount(validRequest("old@example.com"));
 
-        accountService.updateAccount(created.getAccountId(), new UpdateAccountRequest().email("new@example.com"));
+        accountService.updateAccount(created.getAccountId(), new UpdateAccountRequest().email("OLD@example.com"));
+        assertThat(accountService.getAccount(null, "old@example.com").getAccountId()).isEqualTo(created.getAccountId());
 
+        accountService.updateAccount(created.getAccountId(), new UpdateAccountRequest().email("new@example.com"));
         assertThatThrownBy(() -> accountService.getAccount(null, "old@example.com"))
                 .isInstanceOf(AccountNotFoundException.class);
         assertThat(accountService.getAccount(null, "new@example.com").getAccountId()).isEqualTo(created.getAccountId());
     }
 
     @Test
-    void deleteAccount_requiresInactiveStatus() {
-        CreateAccountResponse created = accountService.createAccount(validRequest("del-active@example.com"));
+    void deleteAccount_requiresInactiveStatus_thenSucceedsOnceDeactivated() {
+        CreateAccountResponse created = accountService.createAccount(validRequest("del@example.com"));
+        DeleteAccountRequest deleteRequest = new DeleteAccountRequest().securityPin(created.getSecurityPin());
 
-        assertThatThrownBy(() -> accountService.deleteAccount(created.getAccountId()))
+        // PIN validation is now an AOP concern (PinValidationAspect) that only applies to Spring-proxied
+        // beans, not a plain `new AccountService(...)` in a unit test - the securityPin value here is
+        // irrelevant to AccountService's own logic, which is exactly what's under test.
+        assertThatThrownBy(() -> accountService.deleteAccount(created.getAccountId(), deleteRequest))
                 .isInstanceOf(ConflictException.class);
-    }
 
-    @Test
-    void deleteAccount_succeedsWhenInactive() {
-        CreateAccountResponse created = accountService.createAccount(validRequest("del-ok@example.com"));
         accountService.changeStatus(created.getAccountId(), new ChangeStatusRequest().status(AccountStatusValue.INACTIVE));
-
-        accountService.deleteAccount(created.getAccountId());
+        accountService.deleteAccount(created.getAccountId(), deleteRequest);
 
         assertThatThrownBy(() -> accountService.getAccount(created.getAccountId(), null))
                 .isInstanceOf(AccountNotFoundException.class);

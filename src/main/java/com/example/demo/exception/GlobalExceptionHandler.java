@@ -50,15 +50,28 @@ public class GlobalExceptionHandler {
                 fieldErrors.put(field, String.format(INVALID_FIELD_VALUE, field, rootCauseMessage(je)));
             }
         }
-        String message = fieldErrors.isEmpty() ? ex.getMessage() : VALIDATION_FAILED;
+        if (fieldErrors.isEmpty()) {
+            log.warn("Unreadable request body", ex);
+        }
+        String message = fieldErrors.isEmpty() ? MALFORMED_REQUEST_BODY : VALIDATION_FAILED;
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse(Instant.now(), HttpStatus.BAD_REQUEST.value(), HttpStatus.BAD_REQUEST.getReasonPhrase(), message, fieldErrors));
     }
 
-    @ExceptionHandler({MissingServletRequestParameterException.class, MethodArgumentTypeMismatchException.class})
-    public ResponseEntity<ErrorResponse> handleBadRequest(Exception ex) {
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingParam(MissingServletRequestParameterException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse(Instant.now(), HttpStatus.BAD_REQUEST.value(), HttpStatus.BAD_REQUEST.getReasonPhrase(), ex.getMessage(), Collections.emptyMap()));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        // ex.getMessage() embeds the internal Java type name (e.g. "...required type 'com.example.demo.dto.CountryCode'") -
+        // build the field error from just the param name and the value the caller actually sent instead.
+        String field = ex.getName();
+        Map<String, String> fieldErrors = Map.of(field, String.format(INVALID_FIELD_VALUE, field, ex.getValue()));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse(Instant.now(), HttpStatus.BAD_REQUEST.value(), HttpStatus.BAD_REQUEST.getReasonPhrase(), VALIDATION_FAILED, fieldErrors));
     }
 
     @ExceptionHandler(Exception.class)

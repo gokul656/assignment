@@ -1,9 +1,14 @@
 package com.example.demo.service;
 
 import com.example.demo.exception.PostalLookupException;
+import com.example.demo.model.PostalLocation;
+import com.example.demo.model.ZippopotamResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -11,9 +16,11 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClient;
 
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -52,16 +59,19 @@ class ZippopotamClientTest {
     }
 
     @Test
-    void lookup_success_mapsPlaceStateAndCoordinates() {
-        when(responseSpec.body(ZippopotamResponse.class))
-                .thenReturn(singlePlaceResponse("Birmingham", "AL", "-86.8066", "33.521"));
+    void lookup_success_mapsFirstPlaceStateAndCoordinates_whenMultiplePlacesReturned() {
+        ZippopotamResponse response = new ZippopotamResponse("10001", "United States", "US", List.of(
+                new ZippopotamResponse.Place("New York", "New York", "NY", "-74.0", "40.7"),
+                new ZippopotamResponse.Place("Brooklyn", "New York", "NY", "-73.9", "40.6")
+        ));
+        when(responseSpec.body(ZippopotamResponse.class)).thenReturn(response);
 
-        PostalLocation result = zippopotamClient.lookup("US", "35203");
+        PostalLocation result = zippopotamClient.lookup("US", "10001");
 
-        assertThat(result.place()).isEqualTo("Birmingham");
-        assertThat(result.state()).isEqualTo("AL");
-        assertThat(result.longitude()).isEqualTo(-86.8066);
-        assertThat(result.latitude()).isEqualTo(33.521);
+        assertThat(result.place()).isEqualTo("New York");
+        assertThat(result.state()).isEqualTo("NY");
+        assertThat(result.longitude()).isEqualTo(-74.0);
+        assertThat(result.latitude()).isEqualTo(40.7);
     }
 
     @Test
@@ -76,65 +86,59 @@ class ZippopotamClientTest {
         assertThat(countryArg.getValue()).isEqualTo("us");
     }
 
-    @Test
-    void lookup_usesFirstPlaceWhenMultipleReturned() {
-        ZippopotamResponse response = new ZippopotamResponse("10001", "United States", "US", List.of(
-                new ZippopotamResponse.Place("New York", "New York", "NY", "-74.0", "40.7"),
-                new ZippopotamResponse.Place("Brooklyn", "New York", "NY", "-73.9", "40.6")
-        ));
+    private static Stream<Arguments> emptyOrNullPlaceResponses() {
+        return Stream.of(
+                Arguments.of("null response body", null),
+                Arguments.of("empty places list", new ZippopotamResponse("99999", "United States", "US", List.of())),
+                Arguments.of("null places list", new ZippopotamResponse("99999", "United States", "US", null))
+        );
+    }
+
+    @ParameterizedTest(name = "{0} throws PostalLookupException")
+    @MethodSource("emptyOrNullPlaceResponses")
+    void lookup_nullOrEmptyPlaces_throwsPostalLookupException(String label, ZippopotamResponse response) {
         when(responseSpec.body(ZippopotamResponse.class)).thenReturn(response);
 
-        PostalLocation result = zippopotamClient.lookup("US", "10001");
-
-        assertThat(result.place()).isEqualTo("New York");
-    }
-
-    @Test
-    void lookup_nullOrEmptyPlaces_throwsPostalLookupException() {
-        when(responseSpec.body(ZippopotamResponse.class)).thenReturn(null);
-        assertThatThrownBy(() -> zippopotamClient.lookup("US", "99999")).isInstanceOf(PostalLookupException.class);
-
-        when(responseSpec.body(ZippopotamResponse.class))
-                .thenReturn(new ZippopotamResponse("99999", "United States", "US", List.of()));
-        assertThatThrownBy(() -> zippopotamClient.lookup("US", "99999")).isInstanceOf(PostalLookupException.class);
-
-        when(responseSpec.body(ZippopotamResponse.class))
-                .thenReturn(new ZippopotamResponse("99999", "United States", "US", null));
         assertThatThrownBy(() -> zippopotamClient.lookup("US", "99999")).isInstanceOf(PostalLookupException.class);
     }
 
-    @Test
-    void lookup_notFoundFromUpstream_throwsPostalLookupException() {
-        when(responseSpec.body(ZippopotamResponse.class))
-                .thenThrow(HttpClientErrorException.create(HttpStatus.NOT_FOUND, "Not Found", HttpHeaders.EMPTY, new byte[0], null));
-
-        assertThatThrownBy(() -> zippopotamClient.lookup("US", "00000"))
-                .isInstanceOf(PostalLookupException.class)
-                .hasMessageContaining("No location found");
+    private static Stream<Arguments> upstreamHttpErrors() {
+        return Stream.of(
+                Arguments.of(
+                        HttpClientErrorException.create(HttpStatus.NOT_FOUND, "Not Found", HttpHeaders.EMPTY, new byte[0], null),
+                        "No location found"),
+                Arguments.of(
+                        HttpServerErrorException.create(HttpStatus.SERVICE_UNAVAILABLE, "Unavailable", HttpHeaders.EMPTY, new byte[0], null),
+                        "unavailable")
+        );
     }
 
-    @Test
-    void lookup_upstreamServerError_wrapsAsPostalLookupException() {
-        when(responseSpec.body(ZippopotamResponse.class))
-                .thenThrow(HttpServerErrorException.create(HttpStatus.SERVICE_UNAVAILABLE, "Unavailable", HttpHeaders.EMPTY, new byte[0], null));
+    @ParameterizedTest(name = "upstream {0} wraps as PostalLookupException")
+    @MethodSource("upstreamHttpErrors")
+    void lookup_upstreamHttpError_wrapsAsPostalLookupException(HttpStatusCodeException upstreamError, String expectedMessageFragment) {
+        when(responseSpec.body(ZippopotamResponse.class)).thenThrow(upstreamError);
 
         assertThatThrownBy(() -> zippopotamClient.lookup("US", "35203"))
                 .isInstanceOf(PostalLookupException.class)
-                .hasMessageContaining("unavailable");
+                .hasMessageContaining(expectedMessageFragment);
     }
 
-    @Test
-    void lookup_malformedOrMissingCoordinates_returnNullRatherThanThrow() {
-        when(responseSpec.body(ZippopotamResponse.class))
-                .thenReturn(singlePlaceResponse("Nowhere", "ZZ", "not-a-number", ""));
-        PostalLocation malformed = zippopotamClient.lookup("US", "35203");
-        assertThat(malformed.longitude()).isNull();
-        assertThat(malformed.latitude()).isNull();
+    private static Stream<Arguments> unresolvableCoordinates() {
+        return Stream.of(
+                Arguments.of("non-numeric strings", "not-a-number", ""),
+                Arguments.of("null values", null, null)
+        );
+    }
 
+    @ParameterizedTest(name = "{0} return null lat/long rather than throwing")
+    @MethodSource("unresolvableCoordinates")
+    void lookup_malformedOrMissingCoordinates_returnNullRatherThanThrow(String label, String longitude, String latitude) {
         when(responseSpec.body(ZippopotamResponse.class))
-                .thenReturn(singlePlaceResponse("Nowhere", "ZZ", null, null));
-        PostalLocation missing = zippopotamClient.lookup("US", "35203");
-        assertThat(missing.longitude()).isNull();
-        assertThat(missing.latitude()).isNull();
+                .thenReturn(singlePlaceResponse("Nowhere", "ZZ", longitude, latitude));
+
+        PostalLocation result = zippopotamClient.lookup("US", "35203");
+
+        assertThat(result.longitude()).isNull();
+        assertThat(result.latitude()).isNull();
     }
 }

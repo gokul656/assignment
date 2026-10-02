@@ -1,8 +1,8 @@
 package com.example.demo.service;
 
-import com.example.demo.domain.Account;
-import com.example.demo.domain.AccountStatus;
-import com.example.demo.domain.Location;
+import com.example.demo.model.Account;
+import com.example.demo.model.AccountStatus;
+import com.example.demo.model.Location;
 import com.example.demo.dto.AccountResponse;
 import com.example.demo.dto.AccountStatusValue;
 import com.example.demo.dto.ChangeStatusRequest;
@@ -10,6 +10,7 @@ import com.example.demo.dto.CountryCode;
 import com.example.demo.dto.CountryCountResponse;
 import com.example.demo.dto.CreateAccountRequest;
 import com.example.demo.dto.CreateAccountResponse;
+import com.example.demo.dto.DeleteAccountRequest;
 import com.example.demo.dto.LocationResponse;
 import com.example.demo.dto.PlaceCountResponse;
 import com.example.demo.dto.StateCountResponse;
@@ -17,7 +18,9 @@ import com.example.demo.dto.UpdateAccountRequest;
 import com.example.demo.exception.AccountNotFoundException;
 import com.example.demo.exception.ConflictException;
 import com.example.demo.exception.ValidationException;
+import com.example.demo.model.PostalLocation;
 import com.example.demo.repository.AccountRepository;
+import com.example.demo.security.ValidatePin;
 import com.example.demo.util.IdGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -78,6 +81,7 @@ public class AccountService {
                 .securityPin(securityPin);
     }
 
+    @ValidatePin
     public AccountResponse updateAccount(String accountId, UpdateAccountRequest request) {
         Account account = findOrThrow(accountId);
         if (account.getStatus() != AccountStatus.ACTIVE) {
@@ -129,7 +133,8 @@ public class AccountService {
         return toAccountResponse(account);
     }
 
-    public void deleteAccount(String accountId) {
+    @ValidatePin
+    public void deleteAccount(String accountId, DeleteAccountRequest request) {
         Account account = findOrThrow(accountId);
         if (account.getStatus() != AccountStatus.INACTIVE) {
             throw new ConflictException(ONLY_INACTIVE_ACCOUNTS_CAN_BE_DELETED, account.getStatus());
@@ -151,6 +156,7 @@ public class AccountService {
         return toAccountResponse(account);
     }
 
+    @ValidatePin
     public CreateAccountResponse changeStatus(String accountId, ChangeStatusRequest request) {
         Account account = findOrThrow(accountId);
         account.setStatus(AccountStatus.valueOf(request.getStatus().name()));

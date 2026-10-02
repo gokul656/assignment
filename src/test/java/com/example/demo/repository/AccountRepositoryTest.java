@@ -1,7 +1,7 @@
 package com.example.demo.repository;
 
-import com.example.demo.domain.Account;
-import com.example.demo.domain.AccountStatus;
+import com.example.demo.model.Account;
+import com.example.demo.model.AccountStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -30,36 +30,26 @@ class AccountRepositoryTest {
     }
 
     @Test
-    void save_thenFindById_handlesPresentAndAbsent() {
+    void save_thenFindByIdAndExistsById_handlePresentAndAbsent() {
+        assertThat(repository.existsById("ABC123")).isFalse();
+
         repository.save(account("ABC123", "alice@example.com"));
 
         assertThat(repository.findById("ABC123")).isPresent();
         assertThat(repository.findById("ABC123").get().getEmail()).isEqualTo("alice@example.com");
         assertThat(repository.findById("NOPE00")).isEmpty();
+        assertThat(repository.existsById("ABC123")).isTrue();
     }
 
     @Test
-    void findByEmail_isCaseInsensitiveAndHandlesAbsent() {
+    void emailLookups_areCaseInsensitiveAndHandleAbsent() {
         repository.save(account("ABC123", "Alice@Example.com"));
 
         assertThat(repository.findByEmail("alice@example.com")).isPresent();
         assertThat(repository.findByEmail("ALICE@EXAMPLE.COM")).isPresent();
         assertThat(repository.findByEmail("nobody@example.com")).isEmpty();
-    }
-
-    @Test
-    void existsByEmail_isCaseInsensitive() {
-        repository.save(account("ABC123", "Bob@Example.com"));
-
-        assertThat(repository.existsByEmail("bob@example.com")).isTrue();
+        assertThat(repository.existsByEmail("alice@example.com")).isTrue();
         assertThat(repository.existsByEmail("nobody@example.com")).isFalse();
-    }
-
-    @Test
-    void existsById_reflectsStoredAccounts() {
-        assertThat(repository.existsById("ABC123")).isFalse();
-        repository.save(account("ABC123", "alice@example.com"));
-        assertThat(repository.existsById("ABC123")).isTrue();
     }
 
     @Test

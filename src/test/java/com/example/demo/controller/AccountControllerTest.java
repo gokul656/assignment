@@ -6,17 +6,13 @@ import com.example.demo.dto.ChangeStatusRequest;
 import com.example.demo.dto.CountryCode;
 import com.example.demo.dto.CreateAccountRequest;
 import com.example.demo.dto.CreateAccountResponse;
+import com.example.demo.dto.DeleteAccountRequest;
 import com.example.demo.dto.LocationResponse;
-import com.example.demo.dto.VerifyPinRequest;
-import com.example.demo.dto.VerifyPinResponse;
+import com.example.demo.dto.UpdateAccountRequest;
 import com.example.demo.exception.AccountNotFoundException;
 import com.example.demo.exception.ConflictException;
 import com.example.demo.exception.InvalidSecurityPinException;
-import com.example.demo.exception.TooManyAttemptsException;
-import com.example.demo.security.VerificationTokenStore;
 import com.example.demo.service.AccountService;
-import com.example.demo.service.PinVerificationService;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -24,8 +20,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
-
-import java.util.Optional;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
@@ -41,10 +35,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * On this branch, PIN enforcement moved from a web-layer interceptor into
+ * {@code PinValidationAspect}, which wraps the real (Spring-proxied) {@code AccountService} bean.
+ * Since {@code accountService} is a Mockito mock here, the aspect never actually runs in this
+ * slice - so PIN-success/failure behavior is covered separately in {@code PinValidationAspectTest}.
+ * What *is* still testable at this layer is Bean Validation on the {@code securityPin} field
+ * (missing/malformed), since that runs before the controller method is even invoked.
+ */
 @WebMvcTest(AccountController.class)
 class AccountControllerTest {
-
-    private static final String TOKEN_HEADER = "X-Verification-Token";
 
     @Autowired
     private MockMvc mockMvc;
@@ -54,18 +54,6 @@ class AccountControllerTest {
 
     @MockitoBean
     private AccountService accountService;
-
-    @MockitoBean
-    private PinVerificationService pinVerificationService;
-
-    // Required to wire VerificationTokenInterceptor/WebConfig, which @WebMvcTest auto-detects as a HandlerInterceptor bean.
-    @MockitoBean
-    private VerificationTokenStore tokenStore;
-
-    @BeforeEach
-    void stubTokenInterceptorToAllowByDefault() {
-        when(tokenStore.consume("valid-token")).thenReturn(Optional.of("ABC123"));
-    }
 
     private static CreateAccountRequest validCreateRequest() {
         return new CreateAccountRequest().name("Alice").email("alice@example.com").country(CountryCode.US).postalCode("35203").age(30);
@@ -113,7 +101,9 @@ class AccountControllerTest {
 
     @Test
     void createAccount_nonRequestedStatus_returns400WithFieldError() throws Exception {
-        // "ACTIVE" isn't a valid create-time status (only "Requested" is), so this is raw JSON too.
+        // "ACTIVE" isn't a valid create-time status (only "Requested" is). Also raw JSON, and can't
+        // be combined with the invalid-country case above: Jackson's enum deserialization bails on
+        // the first bad enum it hits, so only one unparseable enum field surfaces per request.
         mockMvc.perform(post("/api/accounts")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Alice\",\"email\":\"alice@example.com\",\"country\":\"US\",\"postalCode\":\"35203\",\"age\":30,\"status\":\"ACTIVE\"}"))
@@ -129,47 +119,6 @@ class AccountControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(validCreateRequest().email("dup@example.com"))))
                 .andExpect(status().isConflict());
-    }
-
-    @Test
-    void verifyPin_valid_returnsToken() throws Exception {
-        when(pinVerificationService.verifyPin("ABC123", "1234"))
-                .thenReturn(new VerifyPinResponse().verificationToken("valid-token").expiresInSeconds(300L));
-
-        mockMvc.perform(post("/api/accounts/ABC123/verify-pin")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new VerifyPinRequest().securityPin("1234"))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.verificationToken").value("valid-token"))
-                .andExpect(jsonPath("$.expiresInSeconds").value(300));
-    }
-
-    @Test
-    void verifyPin_wrongPin_returns403() throws Exception {
-        when(pinVerificationService.verifyPin("ABC123", "0000")).thenThrow(new InvalidSecurityPinException("bad pin"));
-
-        mockMvc.perform(post("/api/accounts/ABC123/verify-pin")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new VerifyPinRequest().securityPin("0000"))))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void verifyPin_tooManyAttempts_returns403() throws Exception {
-        when(pinVerificationService.verifyPin(anyString(), anyString())).thenThrow(new TooManyAttemptsException("locked out"));
-
-        mockMvc.perform(post("/api/accounts/ABC123/verify-pin")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new VerifyPinRequest().securityPin("1234"))))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void verifyPin_malformedPin_returns400() throws Exception {
-        mockMvc.perform(post("/api/accounts/ABC123/verify-pin")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"securityPin\":\"12a4\"}"))
-                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -194,68 +143,41 @@ class AccountControllerTest {
     }
 
     @Test
+    void getCounts_invalidCountry_returns400WithoutLeakingInternalTypeName() throws Exception {
+        mockMvc.perform(get("/api/accounts/counts").param("country", "ZZ"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.country").exists())
+                .andExpect(jsonPath("$.fieldErrors.country", not(containsString("com.example"))))
+                .andExpect(jsonPath("$.fieldErrors.country", not(containsString("CountryCode"))));
+    }
+
+    @Test
     void updateAccount_onInactive_returns409() throws Exception {
         when(accountService.updateAccount(anyString(), any())).thenThrow(new ConflictException("Only Active accounts can be updated"));
 
         mockMvc.perform(put("/api/accounts/ABC123")
-                        .header(TOKEN_HEADER, "valid-token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"age\":40}"))
+                        .content(objectMapper.writeValueAsString(new UpdateAccountRequest().age(40).securityPin("1234"))))
                 .andExpect(status().isConflict());
     }
 
     @Test
     void updateAccount_invalidPostalCode_returns400() throws Exception {
         mockMvc.perform(put("/api/accounts/ABC123")
-                        .header(TOKEN_HEADER, "valid-token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"postalCode\":\"abc\"}"))
+                        .content("{\"postalCode\":\"abc\",\"securityPin\":\"1234\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fieldErrors.postalCode").exists());
     }
 
     @Test
-    void updateAccount_missingToken_returns401() throws Exception {
-        mockMvc.perform(put("/api/accounts/ABC123")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"age\":40}"))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void updateAccount_invalidOrExpiredToken_returns401() throws Exception {
-        when(tokenStore.consume("stale-token")).thenReturn(Optional.empty());
-
-        mockMvc.perform(put("/api/accounts/ABC123")
-                        .header(TOKEN_HEADER, "stale-token")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"age\":40}"))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void updateAccount_tokenIssuedForDifferentAccount_returns401() throws Exception {
-        when(tokenStore.consume("other-accounts-token")).thenReturn(Optional.of("OTHER99"));
-
-        mockMvc.perform(put("/api/accounts/ABC123")
-                        .header(TOKEN_HEADER, "other-accounts-token")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"age\":40}"))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void deleteAccount_missingToken_returns401() throws Exception {
-        mockMvc.perform(delete("/api/accounts/ABC123"))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
     void deleteAccount_valid_returns204() throws Exception {
-        mockMvc.perform(delete("/api/accounts/ABC123").header(TOKEN_HEADER, "valid-token"))
+        mockMvc.perform(delete("/api/accounts/ABC123")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeleteAccountRequest().securityPin("1234"))))
                 .andExpect(status().isNoContent());
 
-        verify(accountService).deleteAccount("ABC123");
+        verify(accountService).deleteAccount(anyString(), any());
     }
 
     @Test
@@ -264,18 +186,48 @@ class AccountControllerTest {
                 .thenReturn(new CreateAccountResponse().accountId("ABC123").status(AccountStatusValue.INACTIVE));
 
         mockMvc.perform(patch("/api/accounts/ABC123/status")
-                        .header(TOKEN_HEADER, "valid-token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ChangeStatusRequest().status(AccountStatusValue.INACTIVE))))
+                        .content(objectMapper.writeValueAsString(new ChangeStatusRequest().status(AccountStatusValue.INACTIVE).securityPin("1234"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("INACTIVE"));
     }
 
+    // Bean Validation on securityPin (required, ^\d{4}$) is generated identically for all three
+    // protected DTOs from the same openapi.yaml pattern, and exception-to-status mapping is a
+    // GlobalExceptionHandler concern already covered directly in GlobalExceptionHandlerTest - so
+    // these are exercised once here (PUT) rather than repeated per endpoint.
+
     @Test
-    void changeStatus_missingToken_returns401() throws Exception {
-        mockMvc.perform(patch("/api/accounts/ABC123/status")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ChangeStatusRequest().status(AccountStatusValue.INACTIVE))))
-                .andExpect(status().isUnauthorized());
+    void updateAccount_missingPin_returns400() throws Exception {
+        mockMvc.perform(put("/api/accounts/ABC123")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"age\":40}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.securityPin").exists());
+    }
+
+    @Test
+    void updateAccount_malformedPin_returns400() throws Exception {
+        mockMvc.perform(put("/api/accounts/ABC123")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"age\":40,\"securityPin\":\"12a4\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.securityPin").exists());
+    }
+
+    @Test
+    void updateAccount_serviceRejectsPin_returns403() throws Exception {
+        when(accountService.updateAccount(anyString(), any())).thenThrow(new InvalidSecurityPinException("bad pin"));
+
+        mockMvc.perform(put("/api/accounts/ABC123")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"age\":40,\"securityPin\":\"1234\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void updateAccount_unknownAccount_returns404() throws Exception {
+        when(accountService.updateAccount(anyString(), any())).thenThrow(new AccountNotFoundException("not found"));
+
+        mockMvc.perform(put("/api/accounts/ABC123")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"age\":40,\"securityPin\":\"1234\"}"))
+                .andExpect(status().isNotFound());
     }
 }
