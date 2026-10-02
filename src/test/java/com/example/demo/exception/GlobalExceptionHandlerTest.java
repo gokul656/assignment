@@ -15,6 +15,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.exc.UnrecognizedPropertyException;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -98,6 +99,19 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody().message()).isEqualTo("Validation failed");
         assertThat(response.getBody().fieldErrors().get("country")).contains("Unexpected value 'CA'");
+    }
+
+    @Test
+    void handleUnreadableBody_unrecognizedProperty_returnsCleanFieldError_doesNotLeakClassName() {
+        UnrecognizedPropertyException upe = Mockito.mock(UnrecognizedPropertyException.class);
+        when(upe.getPropertyName()).thenReturn("notInSpecField");
+        HttpMessageNotReadableException ex = new HttpMessageNotReadableException("outer message", upe, null);
+
+        ResponseEntity<ErrorResponse> response = handler.handleUnreadableBody(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().fieldErrors()).containsEntry("notInSpecField", "Unrecognized field 'notInSpecField'");
+        assertThat(response.getBody().fieldErrors().get("notInSpecField")).doesNotContain("com.example", "known properties");
     }
 
     private static Stream<Arguments> jacksonPathsWithNoUsableFieldName() {

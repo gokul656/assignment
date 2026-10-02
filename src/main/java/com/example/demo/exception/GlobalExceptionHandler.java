@@ -11,6 +11,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.exc.UnrecognizedPropertyException;
 
 import java.time.Instant;
 import java.util.Collections;
@@ -44,7 +45,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException ex) {
         Map<String, String> fieldErrors = new LinkedHashMap<>();
-        if (ex.getCause() instanceof JacksonException je && !je.getPath().isEmpty()) {
+        if (ex.getCause() instanceof UnrecognizedPropertyException upe) {
+            // upe.getMessage() dumps the declaring class name and the full list of known
+            // properties - build the field error from just the rejected property name instead.
+            fieldErrors.put(upe.getPropertyName(), String.format(UNRECOGNIZED_FIELD, upe.getPropertyName()));
+        } else if (ex.getCause() instanceof JacksonException je && !je.getPath().isEmpty()) {
             var lastRef = je.getPath().get(je.getPath().size() - 1);
             String field = lastRef.getPropertyName();
             if (field != null) {

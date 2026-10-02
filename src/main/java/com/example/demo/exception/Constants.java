@@ -21,6 +21,7 @@ public final class Constants {
     // GlobalExceptionHandler
     public static final String VALIDATION_FAILED = "Validation failed";
     public static final String INVALID_FIELD_VALUE = "Invalid value for field '%s': %s";
+    public static final String UNRECOGNIZED_FIELD = "Unrecognized field '%s'";
     public static final String MALFORMED_REQUEST_BODY = "Malformed request body";
     public static final String UNEXPECTED_ERROR = "An unexpected error occurred. Please try again later.";
 }
