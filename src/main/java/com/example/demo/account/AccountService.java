@@ -25,6 +25,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.TreeMap;
 
+import static com.example.demo.exception.Constants.*;
+
 @Service
 @RequiredArgsConstructor
 public class AccountService {
@@ -35,7 +37,7 @@ public class AccountService {
     public CreateAccountResponse createAccount(CreateAccountRequest request) {
         String email = request.getEmail();
         if (repository.existsByEmail(email)) {
-            throw new ConflictException("An account already exists for email '" + email + "'");
+            throw new ConflictException(String.format(EMAIL_ALREADY_EXISTS, email));
         }
         String country = request.getCountry().name();
         String postalCode = request.getPostalCode();
@@ -75,7 +77,7 @@ public class AccountService {
     public AccountResponse updateAccount(String accountId, UpdateAccountRequest request) {
         Account account = findOrThrow(accountId);
         if (account.getStatus() != AccountStatus.ACTIVE) {
-            throw new ConflictException("Only Active accounts can be updated (current status: " + account.getStatus() + ")");
+            throw new ConflictException(String.format(ONLY_ACTIVE_ACCOUNTS_CAN_BE_UPDATED, account.getStatus()));
         }
 
         if (request.getName() != null) {
@@ -84,7 +86,7 @@ public class AccountService {
         if (request.getEmail() != null) {
             String newEmail = request.getEmail();
             if (!newEmail.equalsIgnoreCase(account.getEmail()) && repository.existsByEmail(newEmail)) {
-                throw new ConflictException("An account already exists for email '" + newEmail + "'");
+                throw new ConflictException(String.format(EMAIL_ALREADY_EXISTS, newEmail));
             }
             String oldEmail = account.getEmail();
             account.setEmail(newEmail);
@@ -126,24 +128,24 @@ public class AccountService {
     public void deleteAccount(String accountId, String securityPin) {
         Account account = findOrThrow(accountId);
         if (account.getStatus() != AccountStatus.INACTIVE) {
-            throw new ConflictException("Only Inactive accounts can be deleted (current status: " + account.getStatus() + ")");
+            throw new ConflictException(String.format(ONLY_INACTIVE_ACCOUNTS_CAN_BE_DELETED, account.getStatus()));
         }
         if (securityPin == null || !securityPin.equals(account.getSecurityPin())) {
-            throw new InvalidSecurityPinException("Invalid security PIN for account '" + accountId + "'");
+            throw new InvalidSecurityPinException(String.format(INVALID_SECURITY_PIN, accountId));
         }
         repository.deleteById(accountId);
     }
 
     public AccountResponse getAccount(String accountId, String email) {
         if ((accountId == null || accountId.isBlank()) && (email == null || email.isBlank())) {
-            throw new ValidationException("Either 'accountId' or 'email' must be provided");
+            throw new ValidationException(ACCOUNT_ID_OR_EMAIL_REQUIRED);
         }
         Account account;
         if (accountId != null && !accountId.isBlank()) {
             account = findOrThrow(accountId);
         } else {
             account = repository.findByEmail(email)
-                    .orElseThrow(() -> new AccountNotFoundException("No account found for email '" + email + "'"));
+                    .orElseThrow(() -> new AccountNotFoundException(String.format(ACCOUNT_NOT_FOUND_BY_EMAIL, email)));
         }
         return toAccountResponse(account);
     }
@@ -199,7 +201,7 @@ public class AccountService {
 
     private Account findOrThrow(String accountId) {
         return repository.findById(accountId)
-                .orElseThrow(() -> new AccountNotFoundException("No account found with id '" + accountId + "'"));
+                .orElseThrow(() -> new AccountNotFoundException(String.format(ACCOUNT_NOT_FOUND_BY_ID, accountId)));
     }
 
     private String generateUniqueAccountId() {

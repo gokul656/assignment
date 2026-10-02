@@ -15,6 +15,8 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import static com.example.demo.exception.Constants.*;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -33,7 +35,7 @@ public class GlobalExceptionHandler {
         }
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse(Instant.now(), HttpStatus.BAD_REQUEST.value(), HttpStatus.BAD_REQUEST.getReasonPhrase(),
-                        "Validation failed", fieldErrors));
+                        VALIDATION_FAILED, fieldErrors));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -43,10 +45,10 @@ public class GlobalExceptionHandler {
             var lastRef = je.getPath().get(je.getPath().size() - 1);
             String field = lastRef.getPropertyName();
             if (field != null) {
-                fieldErrors.put(field, "Invalid value for field '" + field + "': " + je.getMessage());
+                fieldErrors.put(field, String.format(INVALID_FIELD_VALUE, field, je.getMessage()));
             }
         }
-        String message = fieldErrors.isEmpty() ? ex.getMessage() : "Validation failed";
+        String message = fieldErrors.isEmpty() ? ex.getMessage() : VALIDATION_FAILED;
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse(Instant.now(), HttpStatus.BAD_REQUEST.value(), HttpStatus.BAD_REQUEST.getReasonPhrase(), message, fieldErrors));
     }

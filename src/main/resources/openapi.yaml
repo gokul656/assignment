@@ -2,9 +2,7 @@ openapi: 3.0.3
 info:
   title: Rogers Account Management API
   description: >
-    CRUD API for managing customer accounts keyed by email (one account per email). On
-    create/update, country + postal code are enriched via https://api.zippopotam.us to resolve
-    Place, State, Longitude and Latitude, which are persisted alongside the account.
+    CRUD API for managing customer accounts keyed by email (one account per email).
   version: "1.0.0"
 servers:
   - url: http://localhost:8080
